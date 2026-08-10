@@ -1,0 +1,26 @@
+# 통합 테스트 전용 설정.
+# datasource 는 Testcontainers 의 @ServiceConnection 이 주입하므로 여기에 URL 을 두지 않는다.
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        show_sql: false
+
+writegrow:
+  s3:
+    bucket: writegrow-test
+    region: ap-northeast-2
+    endpoint: ""
+    path-style-access: true
+    access-key: test
+    secret-key: test
+    presign-duration: PT10M
+  ai:
+    base-url: http://localhost:8000
+    # 테스트에서는 실제 AI 서버를 호출하지 않는다.
+    stub: true
+
+logging:
+  level:
+    com.example.writegrow: info

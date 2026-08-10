@@ -1,0 +1,78 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.0'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	awsSdkVersion = '2.51.3'
+	springdocVersion = '3.1.0'
+}
+
+configurations {
+	// Mockito 를 java agent 로 붙이기 위한 전용 설정. jar 하나만 필요하므로 전이 의존성은 제외한다.
+	mockitoAgent {
+		transitive = false
+	}
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	// 인증(REQ-08)을 구현할 때 spring-boot-starter-security 를 다시 추가하고
+	// SecurityFilterChain 에 JWT 필터를 붙인다. 지금은 전부 공개라 의존성을 두지 않는다.
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	// Boot 4 에서 RestClient 자동설정이 별도 모듈로 분리되었다. AI 서버 호출에 필요하다.
+	implementation 'org.springframework.boot:spring-boot-starter-restclient'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// Boot 4 에서는 Flyway 자동설정이 별도 모듈에 있다.
+	// flyway-core 만 넣으면 마이그레이션이 실행되지 않는다.
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	// Flyway 10 부터 DB 벤더 지원이 분리되어 Postgres 모듈이 따로 필요하다.
+	implementation 'org.flywaydb:flyway-database-postgresql'
+
+	implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+	implementation 'software.amazon.awssdk:s3'
+
+	implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+
+	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'org.postgresql:postgresql'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	// Testcontainers 2.x 에서 모듈 아티팩트명이 testcontainers-* 접두사 형태로 바뀌었다.
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+	testImplementation 'org.testcontainers:testcontainers-postgresql'
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	mockitoAgent 'org.mockito:mockito-core'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+
+	// Mockito 가 스스로 agent 를 attach 하는 방식은 향후 JDK 에서 막힌다.
+	// 미리 -javaagent 로 붙여 두어 경고 없이, 앞으로도 동작하게 한다.
+	doFirst {
+		jvmArgs("-javaagent:${configurations.mockitoAgent.asPath}")
+	}
+}

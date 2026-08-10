@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: writegrow-postgres
+    environment:
+      POSTGRES_DB: writegrow
+      POSTGRES_USER: writegrow
+      POSTGRES_PASSWORD: writegrow
+      TZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      - writegrow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U writegrow -d writegrow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: writegrow-localstack
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: ap-northeast-2
+      # 컨테이너 기동 시 개발용 버킷을 자동 생성한다.
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+
+volumes:
+  writegrow-postgres-data:
