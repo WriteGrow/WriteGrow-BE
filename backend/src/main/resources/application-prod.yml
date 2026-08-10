@@ -1,0 +1,41 @@
+# 운영 환경. 모든 비밀 값은 환경 변수로 주입한다.
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+springdoc:
+  # 운영 환경에서는 API 문서를 노출하지 않는다.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+writegrow:
+  s3:
+    bucket: ${S3_BUCKET}
+    region: ${AWS_REGION:ap-northeast-2}
+    # 실제 AWS 엔드포인트를 사용한다.
+    endpoint: ""
+    path-style-access: false
+    # 비워 두면 DefaultCredentialsProvider(IAM 역할, 환경 변수 등)를 사용한다.
+    access-key: ""
+    secret-key: ""
+    presign-duration: PT10M
+  ai:
+    base-url: ${AI_BASE_URL}
+    stub: false
+
+logging:
+  level:
+    com.example.writegrow: info
