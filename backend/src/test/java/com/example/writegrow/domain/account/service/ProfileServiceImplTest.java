@@ -82,7 +82,7 @@ class ProfileServiceImplTest {
         @DisplayName("리포지토리가 준 순서를 유지한 채 전부 반환한다")
         void returnsAllProfiles() {
             given(accountRepository.findById(1L)).willReturn(Optional.of(AccountFixtures.account(1L)));
-            given(profileRepository.findAllByAccountId(1L)).willReturn(
+            given(profileRepository.findAllByAccountIdOrderByCreatedAtDescIdDesc(1L)).willReturn(
                     List.of(AccountFixtures.childProfile(2L), AccountFixtures.parentsProfile(1L)));
 
             List<ProfileResponse> response = profileService.getProfilesByAccount(1L);

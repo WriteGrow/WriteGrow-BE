@@ -43,7 +43,7 @@ public class ProfileServiceImpl implements ProfileService {
         if (accountRepository.findById(accountId).isEmpty()) {
             throw new AccountException(AccountErrorCode.ACCOUNT_NOT_FOUND);
         }
-        return profileRepository.findAllByAccountId(accountId).stream()
+        return profileRepository.findAllByAccountIdOrderByCreatedAtDescIdDesc(accountId).stream()
                 .map(ProfileResponse::from)
                 .toList();
     }

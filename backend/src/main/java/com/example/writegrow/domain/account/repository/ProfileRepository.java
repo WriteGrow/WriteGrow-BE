@@ -2,16 +2,13 @@ package com.example.writegrow.domain.account.repository;
 
 import com.example.writegrow.domain.account.entity.Profile;
 import java.util.List;
-import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface ProfileRepository {
-
-    Profile save(Profile profile);
-
-    Optional<Profile> findById(Long id);
+public interface ProfileRepository extends JpaRepository<Profile, Long> {
 
     /**
-     * 계정에 속한 프로필을 최신 생성순으로 반환한다.
+     * 한 계정의 프로필은 많아야 몇 개이므로 페이지 없이 전부 반환한다.
+     * 생성 시각이 같을 때를 대비해 id 를 보조 정렬 기준으로 둔다.
      */
-    List<Profile> findAllByAccountId(Long accountId);
+    List<Profile> findAllByAccountIdOrderByCreatedAtDescIdDesc(Long accountId);
 }
