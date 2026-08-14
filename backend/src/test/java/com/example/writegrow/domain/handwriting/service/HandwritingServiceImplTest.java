@@ -26,6 +26,8 @@ import com.example.writegrow.domain.writing.exception.WritingErrorCode;
 import com.example.writegrow.domain.writing.exception.WritingException;
 import com.example.writegrow.domain.writing.repository.WritingRepository;
 import com.example.writegrow.infra.s3.StorageClient;
+import com.example.writegrow.infra.s3.StorageKeyFactory;
+import com.example.writegrow.support.S3PropertiesFixtures;
 import com.example.writegrow.support.WritingFixtures;
 import java.util.List;
 import java.util.Optional;
@@ -63,10 +65,11 @@ class HandwritingServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // 직렬화 결과 자체가 검증 대상이므로 실제 ObjectMapper 를 쓴다.
+        // 직렬화 결과와 키 규칙 자체가 검증 대상이므로 ObjectMapper 와 StorageKeyFactory 는 실제 객체를 쓴다.
         handwritingService = new HandwritingServiceImpl(
                 strokeBatchRepository, handwritingAssetRepository, writingRepository,
-                storageClient, new ObjectMapper());
+                storageClient, new StorageKeyFactory(S3PropertiesFixtures.withKeyPrefix("test/")),
+                new ObjectMapper());
     }
 
     @Nested

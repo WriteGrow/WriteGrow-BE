@@ -1,5 +1,10 @@
 # 로컬 개발 환경.
-# 사전 준비: 프로젝트 루트에서 `docker compose up -d` (Postgres + LocalStack)
+# 사전 준비:
+#   1. 프로젝트 루트에서 `docker compose up -d` (Postgres)
+#   2. 환경 변수 S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY 설정
+#
+# S3 는 운영과 같은 실제 버킷을 쓰되 key-prefix 로 영역을 나눈다. LocalStack 을 쓰지 않는 이유는
+# 로컬에서 통과한 것이 실제 AWS 에서도 통과한다는 근거가 되어야 하기 때문이다.
 
 spring:
   datasource:
@@ -15,13 +20,17 @@ spring:
 
 writegrow:
   s3:
-    bucket: writegrow-dev
-    region: ap-northeast-2
-    # LocalStack 을 사용하므로 엔드포인트를 덮어쓰고 path-style 접근을 켠다.
-    endpoint: http://localhost:4566
-    path-style-access: true
-    access-key: test
-    secret-key: test
+    bucket: ${S3_BUCKET}
+    region: ${AWS_REGION:ap-northeast-2}
+    # 실제 AWS 엔드포인트를 사용한다.
+    endpoint: ""
+    # 운영 객체와 섞이지 않도록 dev/ 아래에만 쓴다.
+    key-prefix: dev/
+    # 환경 변수가 있으면 그 값으로 StaticCredentialsProvider 를, 없으면 DefaultCredentialsProvider 를
+    # 쓴다(S3Config#awsCredentialsProvider). 필요한 변수 이름이 파일에 드러나도록 명시해 둔 것이고,
+    # prod 는 값을 비워 두어 항상 DefaultCredentialsProvider(IAM 역할 포함)를 탄다.
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
     presign-duration: PT10M
   ai:
     base-url: http://localhost:8000

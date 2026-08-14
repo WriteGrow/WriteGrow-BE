@@ -17,19 +17,5 @@ services:
       timeout: 3s
       retries: 10
 
-  localstack:
-    image: localstack/localstack:3
-    container_name: writegrow-localstack
-    environment:
-      SERVICES: s3
-      DEFAULT_REGION: ap-northeast-2
-      # 컨테이너 기동 시 개발용 버킷을 자동 생성한다.
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-    ports:
-      - "4566:4566"
-    volumes:
-      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
-
 volumes:
   writegrow-postgres-data:

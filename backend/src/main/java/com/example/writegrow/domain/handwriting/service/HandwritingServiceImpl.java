@@ -46,6 +46,7 @@ public class HandwritingServiceImpl implements HandwritingService {
     private final HandwritingAssetRepository handwritingAssetRepository;
     private final WritingRepository writingRepository;
     private final StorageClient storageClient;
+    private final StorageKeyFactory storageKeyFactory;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -88,7 +89,7 @@ public class HandwritingServiceImpl implements HandwritingService {
 
         byte[] content = readBytes(file);
         String key = storageClient.upload(
-                StorageKeyFactory.handwritingImageKey(writingId, extension), content, file.getContentType());
+                storageKeyFactory.handwritingImageKey(writingId, extension), content, file.getContentType());
 
         HandwritingAsset asset = handwritingAssetRepository.findByWritingId(writingId)
                 .orElseGet(() -> HandwritingAsset.create(writingId));
@@ -118,7 +119,7 @@ public class HandwritingServiceImpl implements HandwritingService {
                 merged.strokeCount(), merged.totalDurationMs(), merged.strokes());
 
         String strokeKey = storageClient.upload(
-                StorageKeyFactory.strokeDataKey(writingId), serialize(document), STROKE_CONTENT_TYPE);
+                storageKeyFactory.strokeDataKey(writingId), serialize(document), STROKE_CONTENT_TYPE);
 
         asset.updateStrokeData(strokeKey, merged.strokeCount(), merged.totalDurationMs());
         handwritingAssetRepository.save(asset);
