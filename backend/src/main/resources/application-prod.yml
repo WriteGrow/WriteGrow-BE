@@ -27,7 +27,8 @@ writegrow:
     region: ${AWS_REGION:ap-northeast-2}
     # 실제 AWS 엔드포인트를 사용한다.
     endpoint: ""
-    path-style-access: false
+    # dev 와 같은 버킷을 쓰므로 접두사로 영역을 나눈다.
+    key-prefix: prod/
     # 비워 두면 DefaultCredentialsProvider(IAM 역할, 환경 변수 등)를 사용한다.
     access-key: ""
     secret-key: ""
