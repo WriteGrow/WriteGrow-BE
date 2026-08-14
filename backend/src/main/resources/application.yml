@@ -32,6 +32,10 @@ springdoc:
   default-produces-media-type: application/json
 
 writegrow:
+  s3:
+    # 기동 시 버킷 접근을 확인하고, 실패하면 애플리케이션을 띄우지 않는다.
+    # 설정 오류가 아동의 손글씨 제출 시점에야 드러나는 것을 막는다.
+    verify-on-startup: true
   ocr:
     # 이 값 미만의 확신도를 가진 구절은 아동 교정 대상에서 제외한다. (기능명세서 FEAT-02-01 비즈니스 규칙)
     confidence-threshold: 0.7
