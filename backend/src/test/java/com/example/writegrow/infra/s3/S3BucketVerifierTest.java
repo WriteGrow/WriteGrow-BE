@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.example.writegrow.support.S3PropertiesFixtures;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
@@ -30,8 +32,12 @@ class S3BucketVerifierTest {
     @Mock
     private S3Client s3Client;
 
+    @Mock
+    private AwsCredentialsProvider credentialsProvider;
+
     private S3BucketVerifier verifier(String endpoint) {
-        return new S3BucketVerifier(s3Client, S3PropertiesFixtures.withEndpoint(endpoint));
+        return new S3BucketVerifier(
+                s3Client, credentialsProvider, S3PropertiesFixtures.withEndpoint(endpoint));
     }
 
     @Nested
@@ -54,6 +60,21 @@ class S3BucketVerifierTest {
     @Nested
     @DisplayName("접근할 수 없으면 기동을 막는다")
     class WhenNotAccessible {
+
+        @Test
+        @DisplayName("자격 증명을 못 찾으면 환경 변수 이름을 알려주고 버킷은 조회하지 않는다")
+        void credentialsMissing() {
+            given(credentialsProvider.resolveCredentials())
+                    .willThrow(SdkClientException.create(
+                            "Unable to load credentials from any of the providers in the chain"));
+
+            assertThatThrownBy(verifier("")::verifyBucketAccessible)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("AWS_ACCESS_KEY_ID")
+                    .hasMessageContaining("AWS_SECRET_ACCESS_KEY");
+
+            verify(s3Client, never()).headBucket(any(HeadBucketRequest.class));
+        }
 
         @Test
         @DisplayName("버킷이 없으면 버킷명과 리전을 알려준다")

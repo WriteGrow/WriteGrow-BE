@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
@@ -32,10 +33,13 @@ public class S3BucketVerifier {
     private static final int NOT_FOUND = 404;
 
     private final S3Client s3Client;
+    private final AwsCredentialsProvider credentialsProvider;
     private final S3Properties s3Properties;
 
     @PostConstruct
     void verifyBucketAccessible() {
+        resolveCredentials();
+
         String bucket = s3Properties.bucket();
         try {
             s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
@@ -59,6 +63,20 @@ public class S3BucketVerifier {
                             .formatted(bucket, s3Properties.hasCustomEndpoint()
                                     ? s3Properties.endpoint()
                                     : "AWS 기본"), exception);
+        }
+    }
+
+    /**
+     * 자격 증명을 먼저 확인한다. 이걸 하지 않으면 환경 변수를 빠뜨린 흔한 실수가 아래 HeadBucket 의
+     * "연결하지 못했습니다" 로 나가서, 네트워크 문제처럼 읽힌다.
+     */
+    private void resolveCredentials() {
+        try {
+            credentialsProvider.resolveCredentials();
+        } catch (SdkException exception) {
+            throw new IllegalStateException(
+                    "AWS 자격 증명을 찾지 못했습니다. AWS_ACCESS_KEY_ID 와 AWS_SECRET_ACCESS_KEY 를 확인하세요.",
+                    exception);
         }
     }
 
