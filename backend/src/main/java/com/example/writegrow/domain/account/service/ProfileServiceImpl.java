@@ -74,7 +74,11 @@ public class ProfileServiceImpl implements ProfileService {
         }
 
         Profile viewer = findProfile(viewerProfileId);
-        // 같은 계정이면 연결된 것으로 본다. 계정 밖에서는 열람할 수 없다.
+        // 아동은 자기 기록만 볼 수 있다. 계정만 확인하면 남매가 서로의 오류 분석을 들여다볼 수 있다.
+        if (viewer.isChild()) {
+            throw new AccountException(AccountErrorCode.NOT_LINKED_CHILD);
+        }
+        // 보호자·교사는 같은 계정이면 연결된 것으로 본다. 계정 밖에서는 열람할 수 없다.
         if (!Objects.equals(viewer.getAccount().getId(), child.getAccount().getId())) {
             throw new AccountException(AccountErrorCode.NOT_LINKED_CHILD);
         }

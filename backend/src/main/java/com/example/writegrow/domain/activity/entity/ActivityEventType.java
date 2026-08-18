@@ -33,5 +33,8 @@ public enum ActivityEventType {
     ERROR_ANALYSIS_FAILED,
 
     /** 보호자·교사가 낮은 확신도 검토 대상을 열람한 이벤트. FEAT-03-02 */
-    ERROR_REVIEW_VIEWED
+    ERROR_REVIEW_VIEWED,
+
+    /** 보호자가 주간 성장 리포트를 열람한 이벤트. FEAT-06-01 */
+    WEEKLY_REPORT_VIEWED
 }
