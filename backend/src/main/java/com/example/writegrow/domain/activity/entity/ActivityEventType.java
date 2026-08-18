@@ -21,5 +21,17 @@ public enum ActivityEventType {
     OCR_FAILED,
 
     /** 아동이 변환 텍스트를 수정한 이벤트. FEAT-02-01 */
-    OCR_TEXT_EDITED
+    OCR_TEXT_EDITED,
+
+    /** 오류 분석 요청 이벤트. FEAT-03-01 */
+    ERROR_ANALYSIS_REQUESTED,
+
+    /** 오류 분석 성공 이벤트. FEAT-03-01 */
+    ERROR_ANALYSIS_COMPLETED,
+
+    /** 오류 분석 실패 이벤트. FEAT-03-01 예외 처리 */
+    ERROR_ANALYSIS_FAILED,
+
+    /** 보호자·교사가 낮은 확신도 검토 대상을 열람한 이벤트. FEAT-03-02 */
+    ERROR_REVIEW_VIEWED
 }
