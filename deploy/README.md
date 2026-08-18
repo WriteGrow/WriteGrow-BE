@@ -65,9 +65,18 @@ sudo nginx -t && sudo systemctl start nginx
 저장소는 AWS S3 지만 서버가 AWS 가 아니라 IAM 역할을 쓸 수 없으므로 키를 직접 주입한다.
 그래서 SDK 기본 이름(`AWS_ACCESS_KEY_ID`) 대신 용도가 드러나는 `S3_` 접두사를 쓴다.
 
-비밀이 아닌 값(`S3_REGION`, `AI_STUB`, DB 이름 등)은 `deploy.yml` 안에 직접 적혀 있다.
-**`AI_STUB=true`** 로 되어 있는데, AI 서버가 배포되기 전까지는 그대로 두어야 한다.
-false 면 손글씨 글이 전부 `ANALYSIS_FAILED` 로 떨어진다.
+### 토글 (Variables 탭)
+
+비밀이 아니라 켜고 끄는 값이므로 **Secrets 가 아니라 Variables** 에 둔다. Secret 으로 두면
+값과 같은 문자열(`true`)이 로그에서 전부 마스킹되어 빌드 로그를 읽기 어려워진다.
+
+| 이름 | 기본값 | 언제 바꾸나 |
+| :--- | :--- | :--- |
+| `AI_STUB` | `true` | AI 서버가 배포되면 `false`. 그 전에 false 로 두면 손글씨 글이 전부 `ANALYSIS_FAILED` 가 된다 |
+| `SWAGGER_ENABLED` | `true` | 프론트 연동이 끝나면 `false` |
+
+변수를 만들지 않으면 위 기본값으로 동작한다. 값을 바꾸면 다음 배포부터 적용된다.
+`S3_REGION` 과 DB 이름은 바뀔 일이 없어 `deploy.yml` 안에 그대로 적혀 있다.
 
 `S3_BUCKET` 은 dev 와 같은 버킷을 쓴다. `prod/` 접두사로 영역만 나누므로 로컬 개발과
 섞이지 않는다. 다른 이름을 넣으면 기동 시 버킷 확인에서 바로 실패한다.

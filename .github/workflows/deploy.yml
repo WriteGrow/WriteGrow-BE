@@ -95,6 +95,11 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 비밀이 아니라 토글이므로 Variables 에 둔다. Secret 으로 두면 값과 같은
+          # 문자열이 로그에서 전부 마스킹되어 빌드 로그를 읽기 어려워진다.
+          # AI 서버가 준비되면 AI_STUB 을, 연동이 끝나면 SWAGGER_ENABLED 를 false 로 바꾼다.
+          AI_STUB: ${{ vars.AI_STUB || 'true' }}
+          SWAGGER_ENABLED: ${{ vars.SWAGGER_ENABLED || 'true' }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           S3_BUCKET: ${{ secrets.S3_BUCKET }}
           S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
@@ -104,7 +109,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,S3_BUCKET,S3_ACCESS_KEY,S3_SECRET_KEY
+          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,S3_BUCKET,S3_ACCESS_KEY,S3_SECRET_KEY,AI_STUB,SWAGGER_ENABLED
           script: |
             set -euo pipefail
             cd /opt/writegrow
@@ -119,10 +124,9 @@ jobs:
             S3_REGION=ap-northeast-2
             S3_ACCESS_KEY=${S3_ACCESS_KEY}
             S3_SECRET_KEY=${S3_SECRET_KEY}
-            AI_STUB=true
+            AI_STUB=${AI_STUB}
             AI_BASE_URL=http://ai:8000
-            # 프론트 연동 기간에만 연다. 시연이 끝나면 false 로 바꾼다.
-            SWAGGER_ENABLED=true
+            SWAGGER_ENABLED=${SWAGGER_ENABLED}
             IMAGE_TAG=${IMAGE_TAG}
             EOF
 
