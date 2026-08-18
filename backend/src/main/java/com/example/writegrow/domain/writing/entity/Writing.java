@@ -61,6 +61,15 @@ public class Writing extends BaseTimeEntity {
     @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
 
+    /**
+     * 다시 쓴 횟수. 획 데이터를 시도별로 나누는 기준이다.
+     *
+     * <p>이 값이 없으면 다시 쓸 때 클라이언트가 보내는 {@code batchSeq=0} 이 이전 시도의 배치와
+     * 충돌해 멱등 처리에 걸리고, 새 획이 조용히 버려진다.
+     */
+    @Column(name = "attempt_no", nullable = false)
+    private int attemptNo;
+
     @OrderBy("revisionNo ASC")
     @OneToMany(mappedBy = "writing", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<WritingRevision> revisions = new ArrayList<>();
@@ -70,6 +79,7 @@ public class Writing extends BaseTimeEntity {
         this.inputType = inputType;
         this.topic = topic;
         this.status = WritingStatus.DRAFT;
+        this.attemptNo = 1;
     }
 
     public static Writing create(Long profileId, InputType inputType, String topic) {
@@ -164,6 +174,30 @@ public class Writing extends BaseTimeEntity {
             addRevision(trimmed, RevisionSource.CHILD_EDIT);
         }
         return edited;
+    }
+
+    /**
+     * 아동이 변환 결과를 받아들이지 않고 처음부터 다시 쓴다. ("다시 쓸게요")
+     *
+     * <p>새 글을 만들지 않고 이 글을 작성 중 상태로 되돌린다. 새로 만들면 목록에 미완성 글이
+     * 하나 남는다.
+     *
+     * <p>수정 이력은 비운다. 폐기한 시도의 OCR 결과가 남아 있으면 보호자의 수정 전/후 비교에
+     * 실제 글과 무관한 내용이 섞인다. <b>손글씨 원본과 획 데이터는 지우지 않는다</b> —
+     * 시도 번호를 올려 다음 획과 구분할 뿐이다.
+     */
+    public void rewrite() {
+        if (status != WritingStatus.ANALYZED && status != WritingStatus.ANALYSIS_FAILED) {
+            throw new WritingException(WritingErrorCode.NOT_REWRITABLE);
+        }
+        requireInputType(InputType.PEN);
+
+        this.status = WritingStatus.DRAFT;
+        this.originalText = null;
+        this.finalText = null;
+        this.submittedAt = null;
+        this.attemptNo++;
+        this.revisions.clear();
     }
 
     /**

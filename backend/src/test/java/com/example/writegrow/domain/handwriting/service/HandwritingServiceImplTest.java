@@ -80,10 +80,10 @@ class HandwritingServiceImplTest {
         @DisplayName("새 배치는 저장되고 전체 배치 수가 응답된다")
         void savesNewBatch() {
             givenPenWriting();
-            given(strokeBatchRepository.existsByWritingIdAndBatchSeq(WRITING_ID, 0)).willReturn(false);
+            given(strokeBatchRepository.existsByWritingIdAndAttemptNoAndBatchSeq(WRITING_ID, 1, 0)).willReturn(false);
             given(strokeBatchRepository.save(any(StrokeBatch.class)))
                     .willAnswer(invocation -> invocation.getArgument(0));
-            given(strokeBatchRepository.countByWritingId(WRITING_ID)).willReturn(1L);
+            given(strokeBatchRepository.countByWritingIdAndAttemptNo(WRITING_ID, 1)).willReturn(1L);
 
             StrokeBatchAppendResponse response = handwritingService.appendStrokeBatch(
                     PROFILE_ID, WRITING_ID, new StrokeBatchAppendRequest(0, List.of(stroke(0))));
@@ -97,8 +97,8 @@ class HandwritingServiceImplTest {
         @DisplayName("같은 배치 순번을 다시 받으면 저장하지 않고 duplicated 를 반환한다")
         void isIdempotent() {
             givenPenWriting();
-            given(strokeBatchRepository.existsByWritingIdAndBatchSeq(WRITING_ID, 3)).willReturn(true);
-            given(strokeBatchRepository.countByWritingId(WRITING_ID)).willReturn(4L);
+            given(strokeBatchRepository.existsByWritingIdAndAttemptNoAndBatchSeq(WRITING_ID, 1, 3)).willReturn(true);
+            given(strokeBatchRepository.countByWritingIdAndAttemptNo(WRITING_ID, 1)).willReturn(4L);
 
             StrokeBatchAppendResponse response = handwritingService.appendStrokeBatch(
                     PROFILE_ID, WRITING_ID, new StrokeBatchAppendRequest(3, List.of(stroke(0))));
@@ -191,12 +191,13 @@ class HandwritingServiceImplTest {
         @Test
         @DisplayName("획을 병합해 S3 에 올리고 요약 지표를 자산에 반영한다")
         void mergesAndUploads() {
+            givenPenWriting();
             HandwritingAsset asset = HandwritingAsset.create(WRITING_ID);
             asset.updateImage("handwriting/image.png", 1024, 768);
             given(handwritingAssetRepository.findByWritingId(WRITING_ID)).willReturn(Optional.of(asset));
-            given(strokeBatchRepository.findAllByWritingIdOrderByBatchSeqAsc(WRITING_ID)).willReturn(List.of(
-                    StrokeBatch.of(WRITING_ID, 0, StrokePayload.of(List.of(stroke(0)))),
-                    StrokeBatch.of(WRITING_ID, 1, StrokePayload.of(List.of(stroke(1))))));
+            given(strokeBatchRepository.findAllByWritingIdAndAttemptNoOrderByBatchSeqAsc(WRITING_ID, 1)).willReturn(List.of(
+                    StrokeBatch.of(WRITING_ID, 1, 0, StrokePayload.of(List.of(stroke(0)))),
+                    StrokeBatch.of(WRITING_ID, 1, 1, StrokePayload.of(List.of(stroke(1))))));
             given(storageClient.upload(anyString(), any(byte[].class), eq("application/json")))
                     .willAnswer(invocation -> invocation.getArgument(0));
             given(storageClient.presignedGetUrl(anyString())).willReturn("https://s3.example/object");
@@ -215,6 +216,7 @@ class HandwritingServiceImplTest {
         @Test
         @DisplayName("이미지가 아직 없으면 IMAGE_REQUIRED 예외가 발생한다")
         void requiresImage() {
+            givenPenWriting();
             given(handwritingAssetRepository.findByWritingId(WRITING_ID)).willReturn(Optional.empty());
 
             assertThatThrownBy(() -> handwritingService.finalizeForAnalysis(WRITING_ID))
@@ -226,10 +228,11 @@ class HandwritingServiceImplTest {
         @Test
         @DisplayName("획 데이터가 하나도 없으면 STROKE_DATA_REQUIRED 예외가 발생한다")
         void requiresStrokeData() {
+            givenPenWriting();
             HandwritingAsset asset = HandwritingAsset.create(WRITING_ID);
             asset.updateImage("handwriting/image.png", 1024, 768);
             given(handwritingAssetRepository.findByWritingId(WRITING_ID)).willReturn(Optional.of(asset));
-            given(strokeBatchRepository.findAllByWritingIdOrderByBatchSeqAsc(WRITING_ID)).willReturn(List.of());
+            given(strokeBatchRepository.findAllByWritingIdAndAttemptNoOrderByBatchSeqAsc(WRITING_ID, 1)).willReturn(List.of());
 
             assertThatThrownBy(() -> handwritingService.finalizeForAnalysis(WRITING_ID))
                     .isInstanceOf(HandwritingException.class)

@@ -36,5 +36,8 @@ public enum ActivityEventType {
     ERROR_REVIEW_VIEWED,
 
     /** 보호자가 주간 성장 리포트를 열람한 이벤트. FEAT-06-01 */
-    WEEKLY_REPORT_VIEWED
+    WEEKLY_REPORT_VIEWED,
+
+    /** 아동이 변환 결과를 받아들이지 않고 다시 쓰기로 한 이벤트. */
+    WRITING_REWRITTEN
 }

@@ -53,24 +53,28 @@ public class HandwritingServiceImpl implements HandwritingService {
     @Transactional
     public StrokeBatchAppendResponse appendStrokeBatch(Long profileId, Long writingId,
                                                        StrokeBatchAppendRequest request) {
-        findOwnedHandwriting(profileId, writingId);
+        Writing writing = findOwnedHandwriting(profileId, writingId);
+        int attemptNo = writing.getAttemptNo();
 
         if (request.strokes() == null || request.strokes().isEmpty()) {
             throw new HandwritingException(HandwritingErrorCode.EMPTY_STROKE_BATCH);
         }
 
         // 같은 배치를 다시 받아도 중복 저장하지 않는다. 네트워크 재시도에 안전하다.
-        if (strokeBatchRepository.existsByWritingIdAndBatchSeq(writingId, request.batchSeq())) {
-            log.debug("이미 수신한 획 배치입니다: writingId={}, batchSeq={}", writingId, request.batchSeq());
+        // 판단은 시도 번호까지 함께 본다. 다시 쓴 뒤의 batchSeq=0 은 이전 시도와 다른 배치다.
+        if (strokeBatchRepository.existsByWritingIdAndAttemptNoAndBatchSeq(
+                writingId, attemptNo, request.batchSeq())) {
+            log.debug("이미 수신한 획 배치입니다: writingId={}, attemptNo={}, batchSeq={}",
+                    writingId, attemptNo, request.batchSeq());
             return new StrokeBatchAppendResponse(writingId, request.batchSeq(), request.strokes().size(),
-                    strokeBatchRepository.countByWritingId(writingId), true);
+                    strokeBatchRepository.countByWritingIdAndAttemptNo(writingId, attemptNo), true);
         }
 
-        StrokeBatch batch = strokeBatchRepository.save(
-                StrokeBatch.of(writingId, request.batchSeq(), StrokePayload.of(request.strokes())));
+        StrokeBatch batch = strokeBatchRepository.save(StrokeBatch.of(
+                writingId, attemptNo, request.batchSeq(), StrokePayload.of(request.strokes())));
 
         return new StrokeBatchAppendResponse(writingId, batch.getBatchSeq(), batch.getStrokeCount(),
-                strokeBatchRepository.countByWritingId(writingId), false);
+                strokeBatchRepository.countByWritingIdAndAttemptNo(writingId, attemptNo), false);
     }
 
     @Override
@@ -102,13 +106,18 @@ public class HandwritingServiceImpl implements HandwritingService {
     @Override
     @Transactional
     public HandwritingAnalysisSource finalizeForAnalysis(Long writingId) {
+        Writing writing = writingRepository.findById(writingId)
+                .orElseThrow(() -> new WritingException(WritingErrorCode.WRITING_NOT_FOUND));
+
         HandwritingAsset asset = handwritingAssetRepository.findByWritingId(writingId)
                 .orElseThrow(() -> new HandwritingException(HandwritingErrorCode.IMAGE_REQUIRED));
         if (!asset.hasImage()) {
             throw new HandwritingException(HandwritingErrorCode.IMAGE_REQUIRED);
         }
 
-        List<StrokeBatch> batches = strokeBatchRepository.findAllByWritingIdOrderByBatchSeqAsc(writingId);
+        // 현재 시도의 획만 병합한다. 시도 번호를 빼면 폐기한 시도의 획이 함께 섞인다.
+        List<StrokeBatch> batches = strokeBatchRepository
+                .findAllByWritingIdAndAttemptNoOrderByBatchSeqAsc(writingId, writing.getAttemptNo());
         if (batches.isEmpty()) {
             throw new HandwritingException(HandwritingErrorCode.STROKE_DATA_REQUIRED);
         }

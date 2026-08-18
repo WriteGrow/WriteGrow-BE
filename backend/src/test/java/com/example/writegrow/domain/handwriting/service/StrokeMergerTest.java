@@ -47,7 +47,8 @@ class StrokeMergerTest {
     }
 
     private static StrokeBatch batch(int batchSeq, StrokeData... strokes) {
-        return StrokeBatch.of(1L, batchSeq, StrokePayload.of(List.of(strokes)));
+        // 병합은 이미 한 시도로 좁혀진 배치만 받으므로 시도 번호는 고정해 둔다.
+        return StrokeBatch.of(1L, 1, batchSeq, StrokePayload.of(List.of(strokes)));
     }
 
     private static StrokeData stroke(int index, long penDownAt, long penUpAt) {

@@ -6,6 +6,7 @@ import com.example.writegrow.domain.writing.dto.request.WritingSubmitRequest;
 import com.example.writegrow.domain.writing.dto.request.WritingTextConfirmRequest;
 import com.example.writegrow.domain.writing.dto.response.WritingCreateResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingDetailResponse;
+import com.example.writegrow.domain.writing.dto.response.TodayWritingStatusResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingSubmitResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingSummaryResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingTextConfirmResponse;
@@ -106,6 +107,51 @@ public class WritingController {
         WritingSubmitResponse response = writingService.submit(profileId, writingId, request);
         HttpStatus status = response.analysisInProgress() ? HttpStatus.ACCEPTED : HttpStatus.OK;
         return ResponseEntity.status(status).body(ApiResponse.ok(response));
+    }
+
+    @Operation(
+            summary = "오늘 작성 현황",
+            description = """
+                    아동 홈의 "오늘 작성 0 / 1편" 에 쓰는 값이다.
+
+                    작성 중인 글이 있으면 `inProgressWritingId` 가 채워진다. 새 글을 만드는 대신
+                    이어쓰게 안내하면 임시 저장만 된 빈 글이 쌓이지 않는다.
+                    """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
+    })
+    @GetMapping("/today")
+    public ResponseEntity<ApiResponse<TodayWritingStatusResponse>> getTodayStatus(
+            @CurrentProfile Long profileId) {
+        return ResponseEntity.ok(ApiResponse.ok(writingService.getTodayStatus(profileId)));
+    }
+
+    @Operation(
+            summary = "다시 쓰기",
+            description = """
+                    아동이 변환 결과를 받아들이지 않고 처음부터 다시 쓴다. ("다시 쓸게요")
+
+                    글을 작성 중(`DRAFT`) 상태로 되돌린다. 새 글을 만들지 않으므로 목록에 미완성 글이
+                    남지 않는다. 변환 텍스트와 수정 이력은 지워지지만 **손글씨 원본과 획 데이터는
+                    보존된다** — 시도 번호가 올라가 다음 획과 구분될 뿐이다.
+
+                    클라이언트는 `batchSeq` 를 다시 0 부터 보내면 된다.
+
+                    변환이 끝난 손글씨 글에서만 호출할 수 있다.
+                    """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "되돌리기 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "손글씨 글이 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "본인 글이 아님"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "글을 찾을 수 없음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409",
+                    description = "변환이 끝나지 않았거나 이미 확정된 글")
+    })
+    @PostMapping("/{writingId}/rewrite")
+    public ResponseEntity<ApiResponse<WritingCreateResponse>> rewrite(
+            @CurrentProfile Long profileId,
+            @Parameter(description = "글 ID", example = "1") @PathVariable Long writingId) {
+        return ResponseEntity.ok(ApiResponse.ok(writingService.rewrite(profileId, writingId)));
     }
 
     @Operation(
