@@ -9,6 +9,7 @@ import com.example.writegrow.domain.account.exception.AccountException;
 import com.example.writegrow.domain.account.repository.AccountRepository;
 import com.example.writegrow.domain.account.repository.ProfileRepository;
 import java.util.List;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,29 @@ public class ProfileServiceImpl implements ProfileService {
             throw new AccountException(AccountErrorCode.CONSENT_REQUIRED);
         }
         return profile;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Profile getViewableChild(Long viewerProfileId, Long childProfileId) {
+        Profile child = findProfile(childProfileId);
+        if (!child.isChild()) {
+            throw new AccountException(AccountErrorCode.NOT_CHILD_PROFILE);
+        }
+        if (Objects.equals(viewerProfileId, childProfileId)) {
+            return child;
+        }
+
+        Profile viewer = findProfile(viewerProfileId);
+        // 아동은 자기 기록만 볼 수 있다. 계정만 확인하면 남매가 서로의 오류 분석을 들여다볼 수 있다.
+        if (viewer.isChild()) {
+            throw new AccountException(AccountErrorCode.NOT_LINKED_CHILD);
+        }
+        // 보호자·교사는 같은 계정이면 연결된 것으로 본다. 계정 밖에서는 열람할 수 없다.
+        if (!Objects.equals(viewer.getAccount().getId(), child.getAccount().getId())) {
+            throw new AccountException(AccountErrorCode.NOT_LINKED_CHILD);
+        }
+        return child;
     }
 
     private Profile findProfile(Long profileId) {

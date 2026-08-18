@@ -5,6 +5,9 @@ import com.example.writegrow.infra.ai.dto.AiAnalysisResponse;
 import com.example.writegrow.infra.ai.dto.AiAnalysisResponse.HesitationPoint;
 import com.example.writegrow.infra.ai.dto.AiAnalysisResponse.ProcessMetric;
 import com.example.writegrow.infra.ai.dto.AiAnalysisResponse.Segment;
+import com.example.writegrow.infra.ai.dto.AiErrorAnalysisRequest;
+import com.example.writegrow.infra.ai.dto.AiErrorAnalysisResponse;
+import com.example.writegrow.infra.ai.dto.AiErrorAnalysisResponse.ErrorItem;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -42,6 +45,22 @@ public class StubAiAnalysisClient implements AiAnalysisClient {
                         7300L,
                         410L,
                         List.of(new HesitationPoint(12, "놀", "ㄴ", 5200L, 2))));
+    }
+
+    /**
+     * 확정 오류 하나와 낮은 확신도 후보 하나를 함께 돌려준다. 임계값 분리 처리와
+     * 보호자 검토 화면을 AI 서버 없이 그대로 확인할 수 있다.
+     */
+    @Override
+    public AiErrorAnalysisResponse analyzeText(AiErrorAnalysisRequest request) {
+        log.info("[STUB] AI 오류 분석 요청을 대신 처리합니다: writingId={}", request.writingId());
+
+        return new AiErrorAnalysisResponse(List.of(
+                new ErrorItem("FINAL_CONSONANT", 12, 15, "놀앗다", "놀았다", 0.93,
+                        "'았'의 받침 표기"),
+                // 임계값(기본 0.75) 미만이라 아동에게 노출되지 않고 검토 대상으로만 분리된다.
+                new ErrorItem("SPACING", 3, 7, "학교에서", "학교 에서", 0.58,
+                        "구어체 표현이라 띄어쓰기 여부를 확정하기 어렵다")));
     }
 
     @Override

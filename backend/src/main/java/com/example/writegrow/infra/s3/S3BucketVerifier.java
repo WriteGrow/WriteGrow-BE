@@ -75,7 +75,7 @@ public class S3BucketVerifier {
             credentialsProvider.resolveCredentials();
         } catch (SdkException exception) {
             throw new IllegalStateException(
-                    "AWS 자격 증명을 찾지 못했습니다. AWS_ACCESS_KEY_ID 와 AWS_SECRET_ACCESS_KEY 를 확인하세요.",
+                    "S3 자격 증명을 찾지 못했습니다. S3_ACCESS_KEY 와 S3_SECRET_KEY 를 확인하세요.",
                     exception);
         }
     }

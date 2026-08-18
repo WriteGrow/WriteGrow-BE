@@ -151,4 +151,63 @@ class ProfileServiceImplTest {
                     .isEqualTo(AccountErrorCode.CONSENT_REQUIRED);
         }
     }
+
+    @Nested
+    @DisplayName("아동 열람 권한 확인")
+    class ViewableChild {
+
+        @Test
+        @DisplayName("아동은 자기 기록을 볼 수 있다")
+        void allowsSelf() {
+            given(profileRepository.findById(1L)).willReturn(Optional.of(AccountFixtures.childProfile(1L)));
+
+            assertThat(profileService.getViewableChild(1L, 1L).getId()).isEqualTo(1L);
+        }
+
+        @Test
+        @DisplayName("같은 계정의 보호자는 볼 수 있다")
+        void allowsParentInSameAccount() {
+            given(profileRepository.findById(1L)).willReturn(Optional.of(AccountFixtures.childProfile(1L)));
+            given(profileRepository.findById(2L)).willReturn(Optional.of(AccountFixtures.parentsProfile(2L)));
+
+            assertThat(profileService.getViewableChild(2L, 1L).getId()).isEqualTo(1L);
+        }
+
+        @Test
+        @DisplayName("다른 계정의 보호자는 볼 수 없다")
+        void rejectsParentInOtherAccount() {
+            given(profileRepository.findById(1L)).willReturn(Optional.of(AccountFixtures.childProfile(1L)));
+            given(profileRepository.findById(4L)).willReturn(
+                    Optional.of(AccountFixtures.profileInAccount(4L, ProfileRole.PARENTS, 2L)));
+
+            assertThatThrownBy(() -> profileService.getViewableChild(4L, 1L))
+                    .isInstanceOf(AccountException.class)
+                    .extracting(exception -> ((AccountException) exception).getErrorCode())
+                    .isEqualTo(AccountErrorCode.NOT_LINKED_CHILD);
+        }
+
+        @Test
+        @DisplayName("같은 계정이라도 다른 아동의 기록은 볼 수 없다")
+        void rejectsSibling() {
+            // 계정만 확인하면 남매가 서로의 오류 분석을 들여다볼 수 있다.
+            given(profileRepository.findById(3L)).willReturn(Optional.of(AccountFixtures.childProfile(3L)));
+            given(profileRepository.findById(1L)).willReturn(Optional.of(AccountFixtures.childProfile(1L)));
+
+            assertThatThrownBy(() -> profileService.getViewableChild(1L, 3L))
+                    .isInstanceOf(AccountException.class)
+                    .extracting(exception -> ((AccountException) exception).getErrorCode())
+                    .isEqualTo(AccountErrorCode.NOT_LINKED_CHILD);
+        }
+
+        @Test
+        @DisplayName("대상이 아동이 아니면 NOT_CHILD_PROFILE 예외가 발생한다")
+        void rejectsNonChildTarget() {
+            given(profileRepository.findById(2L)).willReturn(Optional.of(AccountFixtures.parentsProfile(2L)));
+
+            assertThatThrownBy(() -> profileService.getViewableChild(2L, 2L))
+                    .isInstanceOf(AccountException.class)
+                    .extracting(exception -> ((AccountException) exception).getErrorCode())
+                    .isEqualTo(AccountErrorCode.NOT_CHILD_PROFILE);
+        }
+    }
 }
