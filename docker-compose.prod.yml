@@ -37,6 +37,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_STUB: ${AI_STUB:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     ports:
       # 호스트 루프백에만 붙인다. 외부 요청은 반드시 nginx 를 거치게 해서
       # 로깅과 접근 제어를 한 곳에 모은다. "8080:8080" 으로 두면 nginx 를 우회할 수 있다.

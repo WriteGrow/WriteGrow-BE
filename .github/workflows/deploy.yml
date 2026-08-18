@@ -121,6 +121,8 @@ jobs:
             S3_SECRET_KEY=${S3_SECRET_KEY}
             AI_STUB=true
             AI_BASE_URL=http://ai:8000
+            # 프론트 연동 기간에만 연다. 시연이 끝나면 false 로 바꾼다.
+            SWAGGER_ENABLED=true
             IMAGE_TAG=${IMAGE_TAG}
             EOF
 

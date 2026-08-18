@@ -82,12 +82,15 @@ false 면 손글씨 글이 전부 `ANALYSIS_FAILED` 로 떨어진다.
 ### 확인
 
 ```bash
-curl -i "https://<공인IP>.sslip.io/actuator/health"      # {"status":"UP"}
-curl -i "http://<공인IP>.sslip.io/actuator/health"       # 301 → https
-curl -i "https://<공인IP>.sslip.io/swagger-ui/index.html"  # 404
+curl -i "https://<공인IP>.sslip.io/actuator/health"   # {"status":"UP"}
+curl -i "http://<공인IP>.sslip.io/actuator/health"    # 301 → https
 ```
 
-프론트에는 `https://<공인IP>.sslip.io` 를 API 주소로 알려준다.
+프론트에는 `https://<공인IP>.sslip.io` 를 API 주소로, 문서는
+`https://<공인IP>.sslip.io/swagger-ui/index.html` 을 알려준다.
+
+Swagger 노출은 `SWAGGER_ENABLED` 로 제어한다(`deploy.yml` 에서 `true` 로 쓴다).
+인증이 없으므로 연동이 끝나면 `false` 로 되돌린다.
 
 ### 롤백
 
