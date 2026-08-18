@@ -18,8 +18,13 @@ import com.example.writegrow.domain.writing.event.HandwritingSubmittedEvent;
 import com.example.writegrow.domain.writing.event.TextConfirmedEvent;
 import com.example.writegrow.domain.writing.exception.WritingErrorCode;
 import com.example.writegrow.domain.writing.exception.WritingException;
+import com.example.writegrow.domain.writing.entity.WritingStatus;
+import com.example.writegrow.domain.writing.dto.response.TodayWritingStatusResponse;
 import com.example.writegrow.domain.writing.repository.WritingRepository;
 import com.example.writegrow.global.common.PageResponse;
+import com.example.writegrow.global.config.properties.WritingProperties;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,6 +41,7 @@ public class WritingServiceImpl implements WritingService {
     private final HandwritingQueryService handwritingQueryService;
     private final ActivityEventService activityEventService;
     private final ApplicationEventPublisher eventPublisher;
+    private final WritingProperties writingProperties;
 
     @Override
     @Transactional
@@ -115,6 +121,36 @@ public class WritingServiceImpl implements WritingService {
         eventPublisher.publishEvent(new TextConfirmedEvent(writingId, profileId));
 
         return WritingTextConfirmResponse.of(writing, edited);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TodayWritingStatusResponse getTodayStatus(Long profileId) {
+        LocalDate today = LocalDate.now();
+        List<Writing> todayWritings = writingRepository.findAllInPeriod(
+                profileId, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+
+        // 작성 중인 글이 있으면 새로 시작하는 대신 이어쓰게 안내한다.
+        Long inProgressId = todayWritings.stream()
+                .filter(writing -> writing.getStatus() == WritingStatus.DRAFT)
+                .map(Writing::getId)
+                .findFirst()
+                .orElse(null);
+
+        int goal = writingProperties.dailyGoal();
+        return new TodayWritingStatusResponse(
+                profileId, today, todayWritings.size(), goal, todayWritings.size() >= goal, inProgressId);
+    }
+
+    @Override
+    @Transactional
+    public WritingCreateResponse rewrite(Long profileId, Long writingId) {
+        Writing writing = findOwnedWritingWithRevisions(profileId, writingId);
+        writing.rewrite();
+
+        activityEventService.record(ActivityEventType.WRITING_REWRITTEN, profileId, writingId,
+                Map.of("attemptNo", writing.getAttemptNo()));
+        return WritingCreateResponse.from(writing);
     }
 
     private Writing findOwnedWriting(Long profileId, Long writingId) {
