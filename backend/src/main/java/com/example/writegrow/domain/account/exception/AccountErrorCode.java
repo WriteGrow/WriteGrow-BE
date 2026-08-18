@@ -13,6 +13,7 @@ public enum AccountErrorCode implements ErrorCode {
     PROFILE_NOT_FOUND(HttpStatus.NOT_FOUND, "프로필을 찾을 수 없습니다."),
     NOT_CHILD_PROFILE(HttpStatus.FORBIDDEN, "아동 프로필만 글을 쓸 수 있어요."),
     CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "보호자 동의가 확인되어야 글쓰기를 시작할 수 있어요."),
+    NOT_LINKED_CHILD(HttpStatus.FORBIDDEN, "연결된 아동의 정보만 볼 수 있어요."),
     ;
 
     private final HttpStatus status;

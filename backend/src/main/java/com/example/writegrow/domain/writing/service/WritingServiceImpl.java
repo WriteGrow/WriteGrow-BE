@@ -15,6 +15,7 @@ import com.example.writegrow.domain.writing.dto.response.WritingSummaryResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingTextConfirmResponse;
 import com.example.writegrow.domain.writing.entity.Writing;
 import com.example.writegrow.domain.writing.event.HandwritingSubmittedEvent;
+import com.example.writegrow.domain.writing.event.TextConfirmedEvent;
 import com.example.writegrow.domain.writing.exception.WritingErrorCode;
 import com.example.writegrow.domain.writing.exception.WritingException;
 import com.example.writegrow.domain.writing.repository.WritingRepository;
@@ -73,6 +74,8 @@ public class WritingServiceImpl implements WritingService {
         if (!writing.isHandwriting()) {
             activityEventService.record(ActivityEventType.WRITING_CONFIRMED, profileId, writing.getId(),
                     Map.of("edited", false));
+            // 키보드 글은 제출 즉시 최종본이 확정되므로 여기서 오류 분석이 시작된다. (REQ-03 트리거)
+            eventPublisher.publishEvent(new TextConfirmedEvent(writing.getId(), profileId));
         }
         return WritingSubmitResponse.from(writing);
     }
@@ -107,6 +110,9 @@ public class WritingServiceImpl implements WritingService {
         }
         activityEventService.record(ActivityEventType.WRITING_CONFIRMED, profileId, writingId,
                 Map.of("edited", edited));
+
+        // 손글씨 글은 아동이 변환 텍스트를 확인한 이 시점에 최종본이 확정된다. (REQ-03 트리거)
+        eventPublisher.publishEvent(new TextConfirmedEvent(writingId, profileId));
 
         return WritingTextConfirmResponse.of(writing, edited);
     }
