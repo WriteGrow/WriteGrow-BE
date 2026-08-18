@@ -25,6 +25,7 @@ import com.example.writegrow.domain.writing.entity.InputType;
 import com.example.writegrow.domain.writing.entity.Writing;
 import com.example.writegrow.domain.writing.entity.WritingStatus;
 import com.example.writegrow.domain.writing.event.HandwritingSubmittedEvent;
+import com.example.writegrow.domain.writing.event.TextConfirmedEvent;
 import com.example.writegrow.domain.writing.exception.WritingErrorCode;
 import com.example.writegrow.domain.writing.exception.WritingException;
 import com.example.writegrow.domain.writing.repository.WritingRepository;
@@ -102,7 +103,7 @@ class WritingServiceImplTest {
     class Submit {
 
         @Test
-        @DisplayName("키보드 글은 즉시 확정되고 분석 이벤트를 발행하지 않는다")
+        @DisplayName("키보드 글은 즉시 확정되고 손글씨 분석 대신 오류 분석 이벤트를 발행한다")
         void submitsKeyboardWriting() {
             Writing writing = WritingFixtures.keyboardWriting(WRITING_ID, PROFILE_ID);
             given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
@@ -113,6 +114,8 @@ class WritingServiceImplTest {
             assertThat(response.status()).isEqualTo(WritingStatus.CONFIRMED);
             assertThat(response.analysisInProgress()).isFalse();
             verify(eventPublisher, never()).publishEvent(any(HandwritingSubmittedEvent.class));
+            // 최종본이 확정됐으므로 오류 분석(REQ-03)이 시작되어야 한다.
+            verify(eventPublisher).publishEvent(new TextConfirmedEvent(WRITING_ID, PROFILE_ID));
             verify(activityEventService).record(
                     eq(ActivityEventType.WRITING_SUBMITTED), eq(PROFILE_ID), eq(WRITING_ID), any());
             verify(activityEventService).record(
@@ -247,6 +250,18 @@ class WritingServiceImplTest {
             assertThat(response.edited()).isFalse();
             verify(activityEventService, never()).record(
                     eq(ActivityEventType.OCR_TEXT_EDITED), anyLong(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("확정하면 오류 분석 이벤트를 발행한다")
+        void publishesTextConfirmedEvent() {
+            Writing writing = WritingFixtures.analyzedPenWriting(WRITING_ID, PROFILE_ID, "오늘 학교에서 친구랑 놀앗다");
+            given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
+
+            writingService.confirmText(
+                    PROFILE_ID, WRITING_ID, new WritingTextConfirmRequest("오늘 학교에서 친구랑 놀았다"));
+
+            verify(eventPublisher).publishEvent(new TextConfirmedEvent(WRITING_ID, PROFILE_ID));
         }
     }
 }
