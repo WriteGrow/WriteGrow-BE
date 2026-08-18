@@ -17,16 +17,22 @@ POST /handwriting/analyze
  [3] hesitation.py       (예정) stroke 클러스터를 OCR 텍스트의 글자와 정렬 → hesitationPoints
         │
         ▼
- [4] ocr.py              (예정) 비전 LLM 호출 → fullText / segments(+confidence)
+ [4] ocr.py              비전 LLM(GPT-4o) 호출 → fullText / segments(+confidence)
         │
         ▼
    schemas.AnalyzeResponse 로 조립해서 반환
 ```
 
-`[3]`, `[4]` 는 아직 자리만 잡혀 있다(`ocr.py::recognize` 는 `NotImplementedError`).
-그동안은 `fullText` 를 빈 문자열로 돌려주는데, 계약서 규칙상 백엔드가 이걸
-`ANALYSIS_FAILED` 로 처리하고 아이는 `/api/writings/{id}/analysis/retry` 로 재시도할 수 있으므로
-"미구현 상태에서도 안전하게 실패"한다. `processMetric` 은 OCR 없이도 이미 채워진다.
+`[3]`(hesitation.py)은 아직 자리가 안 잡혀 있다. `[4]`(OCR)는 구현되어 있지만
+`OPENAI_API_KEY` 가 없거나 호출이 실패하면 `fullText` 를 빈 문자열로 돌려주는데,
+계약서 규칙상 백엔드가 이걸 `ANALYSIS_FAILED` 로 처리하고 아이는
+`/api/writings/{id}/analysis/retry` 로 재시도할 수 있으므로 "실패해도 안전하게 실패"한다.
+`processMetric` 은 OCR 성공/실패와 무관하게 항상 채워진다.
+
+OCR 은 GPT-4o 의 `logprobs` (모델이 실제로 계산한 토큰별 확률)를 그대로 이용해
+`segments[].confidence` 를 계산한다 — 모델에게 확신도를 다시 물어보는 자기평가 방식이
+아니다. 한글은 토큰 경계와 글자 경계가 안 맞을 수 있어서, `ocr.py::_tokens_to_chars` 가
+바이트를 다시 이어붙여 글자 단위로 복원하는 과정을 거친다.
 
 ## 로컬 실행
 
@@ -34,7 +40,11 @@ POST /handwriting/analyze
 py -3.10 -m venv .venv
 ./.venv/Scripts/pip install -r requirements.txt
 
-# 테스트
+# OCR 을 실제로 호출하려면 (없어도 서버는 뜨고, OCR 만 실패로 처리됨)
+cp .env.example .env
+# .env 열어서 OPENAI_API_KEY 채우기
+
+# 테스트 (OCR 관련 테스트는 API 를 실제로 호출하지 않고 로직만 검증한다)
 ./.venv/Scripts/python -m pytest -q
 
 # 서버 (기본 포트 8000, backend 의 dev 기본 base-url 과 일치)
@@ -55,3 +65,10 @@ backend 쪽에서 이 서버에 실제로 붙여보려면 `application-dev.yml` 
 | `WRITEGROW_AI_PAUSE_THRESHOLD_MS` | 600 | 이보다 짧은 pen-up 간격은 멈춤으로 세지 않는다 |
 | `WRITEGROW_AI_FETCH_CONNECT_TIMEOUT_S` | 5.0 | imageUrl/strokeUrl 다운로드 connect 타임아웃 |
 | `WRITEGROW_AI_FETCH_READ_TIMEOUT_S` | 20.0 | 다운로드 read 타임아웃 |
+| `WRITEGROW_AI_OCR_MODEL` | gpt-4o | OCR 에 쓸 모델 |
+
+접두사 없는 변수 (OpenAI SDK가 직접 읽음, `.env` 참고):
+
+| 변수 | 설명 |
+| :--- | :--- |
+| `OPENAI_API_KEY` | platform.openai.com 에서 발급. 없으면 OCR 만 실패 처리되고 나머지는 정상 동작 |
