@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import codecs
 import math
+import re
 from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI, OpenAIError
@@ -82,27 +83,24 @@ def _tokens_to_chars(logprob_content) -> list[_CharProb]:
 
 
 def _segments_from_chars(full_text: str, chars: list[_CharProb]) -> list[Segment]:
-    """계약서 예시(segments: "오늘", "학교에서", ...)와 같은 단위로, 공백 기준으로 나눈다.
+    """계약서 예시(segments: "오늘", "학교에서", ...)와 같은 단위로, 공백/줄바꿈 기준으로 나눈다.
 
-    아이 글이 한 줄짜리 짧은 문장이라는 전제 하의 단순화다. 여러 줄/이중 공백처럼
-    복잡한 레이아웃은 다루지 않는다 — 필요해지면 그때 확장한다.
+    \\S+ 로 "공백이 아닌 연속 구간"을 직접 찾으므로 스페이스든 줄바꿈이든 몇 개가 연달아
+    있든 상관없이 단어 경계를 정확히 잡는다(실제 다중 공백 텍스트로 테스트하다 발견한
+    문제 — 예전엔 " " 하나만 구분자로 봐서 "\\n저희" 처럼 줄바꿈이 낀 구절이 뭉쳐 나왔다).
     """
     segments: list[Segment] = []
-    cursor = 0
-    for word in full_text.split(" "):
-        start = cursor
-        end = start + len(word)
-        if word:
-            word_chars = chars[start:end]
-            confidence = (
-                math.exp(sum(c.logprob for c in word_chars) / len(word_chars))
-                if word_chars
-                else None
-            )
-            segments.append(
-                Segment(text=word, confidence=confidence, start_index=start, end_index=end)
-            )
-        cursor = end + 1  # 공백 하나만큼 건너뛴다
+    for match in re.finditer(r"\S+", full_text):
+        start, end = match.start(), match.end()
+        word_chars = chars[start:end]
+        confidence = (
+            math.exp(sum(c.logprob for c in word_chars) / len(word_chars))
+            if word_chars
+            else None
+        )
+        segments.append(
+            Segment(text=match.group(), confidence=confidence, start_index=start, end_index=end)
+        )
     return segments
 
 

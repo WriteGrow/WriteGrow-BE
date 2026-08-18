@@ -49,3 +49,14 @@ def test_segments_split_by_space_and_average_confidence_over_span():
     assert segments[1].end_index == 5
     # 토큰 하나(-0.4)가 글자 5개(오,늘,공백,학,교)에 균등 분배되므로 글자당 -0.08
     assert segments[0].confidence == pytest.approx(math.exp(-0.08))
+
+
+def test_segments_split_on_newline_too():
+    """실제 OCR 결과에서 줄바꿈이 낀 구절이 하나로 뭉치던 버그의 회귀 테스트."""
+    full_text = "안녕하세요\n감사합니다"
+    tokens = [_fake_token(full_text.encode("utf-8"), -0.3)]
+    chars = _tokens_to_chars(tokens)
+
+    segments = _segments_from_chars(full_text, chars)
+
+    assert [s.text for s in segments] == ["안녕하세요", "감사합니다"]
