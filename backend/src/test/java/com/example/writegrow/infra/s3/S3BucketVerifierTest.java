@@ -70,8 +70,8 @@ class S3BucketVerifierTest {
 
             assertThatThrownBy(verifier("")::verifyBucketAccessible)
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("AWS_ACCESS_KEY_ID")
-                    .hasMessageContaining("AWS_SECRET_ACCESS_KEY");
+                    .hasMessageContaining("S3_ACCESS_KEY")
+                    .hasMessageContaining("S3_SECRET_KEY");
 
             verify(s3Client, never()).headBucket(any(HeadBucketRequest.class));
         }
