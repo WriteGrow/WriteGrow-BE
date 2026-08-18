@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ai/.env 가 있으면 읽어서 프로세스 환경 변수로 얹는다(OPENAI_API_KEY 등).
+# .env 는 .gitignore 에 있으니 실수로 커밋될 걱정은 없다.
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -15,6 +20,10 @@ class Settings(BaseSettings):
     # 백엔드→AI 타임아웃(3s/60s, docs/ai-contract.md)과는 별개로 우리가 정한다.
     fetch_connect_timeout_s: float = 5.0
     fetch_read_timeout_s: float = 20.0
+
+    # OCR(ocr.py) 에 쓸 모델. API 키 자체는 여기 두지 않는다 — ai/.env 의
+    # OPENAI_API_KEY 를 OpenAI SDK가 알아서 읽는다(위 load_dotenv 가 .env 를 얹어준 덕분).
+    ocr_model: str = "gpt-4o"
 
 
 settings = Settings()

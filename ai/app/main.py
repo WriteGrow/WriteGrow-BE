@@ -5,7 +5,7 @@ docs/ai-contract.md 가 정의하는 AI 서버. 진입점은 POST /handwriting/a
   1. fetch.py           imageUrl/strokeUrl 다운로드
   2. stroke_metrics.py  획 시계열 → 과정 지표(순수 알고리즘, AI 아님)
   3. hesitation.py       (다음 라운드) stroke 클러스터 ↔ 글자 정렬 → hesitationPoints
-  4. ocr.py              (다음 라운드) 비전 LLM 호출 → fullText/segments
+  4. ocr.py              비전 LLM(GPT-4o) 호출 → fullText/segments
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException
 
 from app.config import settings
 from app.fetch import FetchError, fetch_image_bytes, fetch_stroke_document
-from app.ocr import recognize
+from app.ocr import OcrError, recognize
 from app.schemas import AnalyzeRequest, AnalyzeResponse
 from app.stroke_metrics import compute_process_metric
 
@@ -49,8 +49,10 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 
     try:
         ocr_result = await recognize(image_bytes, request.expected_topic)
-    except NotImplementedError:
-        logger.warning("OCR 미구현 — fullText 를 비워 ANALYSIS_FAILED 로 넘긴다.")
+    except OcrError as e:
+        # OCR 이 실패해도 processMetric 은 이미 계산되어 있다. fullText 를 비워 두면
+        # 계약서 규칙대로 백엔드가 ANALYSIS_FAILED 로 기록하고, 아이는 재시도할 수 있다.
+        logger.warning("OCR 실패: writingId=%s %s", request.writing_id, e)
         return AnalyzeResponse(
             full_text="",
             overall_confidence=None,
