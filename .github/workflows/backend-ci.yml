@@ -1,11 +1,8 @@
 name: Backend CI
 
+# main 에 반영된 뒤의 테스트는 deploy 워크플로가 배포 전에 다시 돌린다.
+# 여기서 push 까지 받으면 같은 테스트가 두 번 돈다.
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
   pull_request:
     paths:
       - 'backend/**'
