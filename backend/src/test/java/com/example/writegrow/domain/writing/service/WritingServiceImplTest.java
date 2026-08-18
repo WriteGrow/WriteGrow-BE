@@ -18,6 +18,7 @@ import com.example.writegrow.domain.writing.dto.request.WritingSubmitRequest;
 import com.example.writegrow.domain.writing.dto.request.WritingTextConfirmRequest;
 import com.example.writegrow.domain.writing.dto.response.WritingCreateResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingDetailResponse;
+import com.example.writegrow.domain.writing.dto.response.TodayWritingStatusResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingSubmitResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingSummaryResponse;
 import com.example.writegrow.domain.writing.dto.response.WritingTextConfirmResponse;
@@ -25,21 +26,23 @@ import com.example.writegrow.domain.writing.entity.InputType;
 import com.example.writegrow.domain.writing.entity.Writing;
 import com.example.writegrow.domain.writing.entity.WritingStatus;
 import com.example.writegrow.domain.writing.event.HandwritingSubmittedEvent;
+import com.example.writegrow.domain.writing.event.TextConfirmedEvent;
 import com.example.writegrow.domain.writing.exception.WritingErrorCode;
 import com.example.writegrow.domain.writing.exception.WritingException;
 import com.example.writegrow.domain.writing.repository.WritingRepository;
 import com.example.writegrow.global.common.PageResponse;
+import com.example.writegrow.global.config.properties.WritingProperties;
 import com.example.writegrow.support.AccountFixtures;
 import com.example.writegrow.support.WritingFixtures;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -70,8 +73,15 @@ class WritingServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
-    @InjectMocks
     private WritingServiceImpl writingService;
+
+    @BeforeEach
+    void setUp() {
+        // 하루 목표는 설정값이라 목이 아니라 실제 값을 넣는다. 목표 달성 판정이 검증 대상이다.
+        writingService = new WritingServiceImpl(
+                writingRepository, profileService, handwritingQueryService,
+                activityEventService, eventPublisher, new WritingProperties(1));
+    }
 
     @Nested
     @DisplayName("글쓰기 시작")
@@ -102,7 +112,7 @@ class WritingServiceImplTest {
     class Submit {
 
         @Test
-        @DisplayName("키보드 글은 즉시 확정되고 분석 이벤트를 발행하지 않는다")
+        @DisplayName("키보드 글은 즉시 확정되고 손글씨 분석 대신 오류 분석 이벤트를 발행한다")
         void submitsKeyboardWriting() {
             Writing writing = WritingFixtures.keyboardWriting(WRITING_ID, PROFILE_ID);
             given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
@@ -113,6 +123,8 @@ class WritingServiceImplTest {
             assertThat(response.status()).isEqualTo(WritingStatus.CONFIRMED);
             assertThat(response.analysisInProgress()).isFalse();
             verify(eventPublisher, never()).publishEvent(any(HandwritingSubmittedEvent.class));
+            // 최종본이 확정됐으므로 오류 분석(REQ-03)이 시작되어야 한다.
+            verify(eventPublisher).publishEvent(new TextConfirmedEvent(WRITING_ID, PROFILE_ID));
             verify(activityEventService).record(
                     eq(ActivityEventType.WRITING_SUBMITTED), eq(PROFILE_ID), eq(WRITING_ID), any());
             verify(activityEventService).record(
@@ -247,6 +259,112 @@ class WritingServiceImplTest {
             assertThat(response.edited()).isFalse();
             verify(activityEventService, never()).record(
                     eq(ActivityEventType.OCR_TEXT_EDITED), anyLong(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("확정하면 오류 분석 이벤트를 발행한다")
+        void publishesTextConfirmedEvent() {
+            Writing writing = WritingFixtures.analyzedPenWriting(WRITING_ID, PROFILE_ID, "오늘 학교에서 친구랑 놀앗다");
+            given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
+
+            writingService.confirmText(
+                    PROFILE_ID, WRITING_ID, new WritingTextConfirmRequest("오늘 학교에서 친구랑 놀았다"));
+
+            verify(eventPublisher).publishEvent(new TextConfirmedEvent(WRITING_ID, PROFILE_ID));
+        }
+    }
+
+    @Nested
+    @DisplayName("오늘 작성 현황")
+    class TodayStatus {
+
+        @Test
+        @DisplayName("오늘 쓴 글이 없으면 목표 미달성으로 응답한다")
+        void reportsEmptyDay() {
+            given(writingRepository.findAllInPeriod(eq(PROFILE_ID), any(), any())).willReturn(List.of());
+
+            TodayWritingStatusResponse response = writingService.getTodayStatus(PROFILE_ID);
+
+            assertThat(response.writingCount()).isZero();
+            assertThat(response.dailyGoal()).isEqualTo(1);
+            assertThat(response.goalAchieved()).isFalse();
+            assertThat(response.inProgressWritingId()).isNull();
+        }
+
+        @Test
+        @DisplayName("목표만큼 썼으면 달성으로 표시한다")
+        void marksGoalAchieved() {
+            Writing writing = WritingFixtures.keyboardWriting(WRITING_ID, PROFILE_ID);
+            writing.submitKeyboard("오늘 학교에서 친구랑 놀았다");
+            given(writingRepository.findAllInPeriod(eq(PROFILE_ID), any(), any()))
+                    .willReturn(List.of(writing));
+
+            TodayWritingStatusResponse response = writingService.getTodayStatus(PROFILE_ID);
+
+            assertThat(response.writingCount()).isEqualTo(1);
+            assertThat(response.goalAchieved()).isTrue();
+            // 제출을 마친 글은 이어쓸 대상이 아니다.
+            assertThat(response.inProgressWritingId()).isNull();
+        }
+
+        @Test
+        @DisplayName("작성 중인 글이 있으면 이어쓸 글 ID 를 알려준다")
+        void exposesInProgressWriting() {
+            given(writingRepository.findAllInPeriod(eq(PROFILE_ID), any(), any()))
+                    .willReturn(List.of(WritingFixtures.keyboardWriting(WRITING_ID, PROFILE_ID)));
+
+            TodayWritingStatusResponse response = writingService.getTodayStatus(PROFILE_ID);
+
+            assertThat(response.inProgressWritingId()).isEqualTo(WRITING_ID);
+        }
+    }
+
+    @Nested
+    @DisplayName("다시 쓰기")
+    class Rewrite {
+
+        @Test
+        @DisplayName("작성 중 상태로 되돌리고 변환 텍스트와 수정 이력을 비운다")
+        void resetsToDraft() {
+            Writing writing = WritingFixtures.analyzedPenWriting(WRITING_ID, PROFILE_ID, "오늘 학교에서 친구랑 놀앗다");
+            given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
+
+            WritingCreateResponse response = writingService.rewrite(PROFILE_ID, WRITING_ID);
+
+            assertThat(response.status()).isEqualTo(WritingStatus.DRAFT);
+            assertThat(writing.getOriginalText()).isNull();
+            assertThat(writing.getFinalText()).isNull();
+            assertThat(writing.getSubmittedAt()).isNull();
+            assertThat(writing.getRevisions()).isEmpty();
+            // 획 데이터는 지우지 않고 시도 번호로만 구분한다.
+            assertThat(writing.getAttemptNo()).isEqualTo(2);
+            verify(activityEventService).record(
+                    eq(ActivityEventType.WRITING_REWRITTEN), eq(PROFILE_ID), eq(WRITING_ID), any());
+        }
+
+        @Test
+        @DisplayName("아직 변환이 끝나지 않은 글은 다시 쓸 수 없다")
+        void rejectsBeforeAnalysis() {
+            Writing writing = WritingFixtures.penWriting(WRITING_ID, PROFILE_ID);
+            writing.submitHandwriting();
+            given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
+
+            assertThatThrownBy(() -> writingService.rewrite(PROFILE_ID, WRITING_ID))
+                    .isInstanceOf(WritingException.class)
+                    .extracting(exception -> ((WritingException) exception).getErrorCode())
+                    .isEqualTo(WritingErrorCode.NOT_REWRITABLE);
+        }
+
+        @Test
+        @DisplayName("다른 아동의 글은 다시 쓸 수 없다")
+        void rejectsOtherProfile() {
+            Writing writing = WritingFixtures.analyzedPenWriting(WRITING_ID, OTHER_PROFILE_ID, "오늘 놀앗다");
+            given(writingRepository.findWithRevisionsById(WRITING_ID)).willReturn(Optional.of(writing));
+
+            assertThatThrownBy(() -> writingService.rewrite(PROFILE_ID, WRITING_ID))
+                    .isInstanceOf(WritingException.class)
+                    .extracting(exception -> ((WritingException) exception).getErrorCode())
+                    .isEqualTo(WritingErrorCode.FORBIDDEN_PROFILE);
         }
     }
 }

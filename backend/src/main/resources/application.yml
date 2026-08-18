@@ -32,6 +32,9 @@ springdoc:
   default-produces-media-type: application/json
 
 writegrow:
+  writing:
+    # 아동 홈의 "오늘 작성 0 / N편" 기준. 저학년에게 부담이 되지 않는 선으로 둔다.
+    daily-goal: 1
   s3:
     # 기동 시 버킷 접근을 확인하고, 실패하면 애플리케이션을 띄우지 않는다.
     # 설정 오류가 아동의 손글씨 제출 시점에야 드러나는 것을 막는다.
@@ -39,6 +42,11 @@ writegrow:
   ocr:
     # 이 값 미만의 확신도를 가진 구절은 아동 교정 대상에서 제외한다. (기능명세서 FEAT-02-01 비즈니스 규칙)
     confidence-threshold: 0.7
+  error-analysis:
+    # 이 값 미만의 오류 후보는 아동에게 노출하지 않고 보호자·교사 검토 대상으로만 분리하며,
+    # 반복 오류 프로필에도 반영하지 않는다. (기능명세서 REQ-03 비즈니스 규칙 4)
+    # OCR 임계값과 성격이 달라 따로 둔다.
+    confidence-threshold: 0.75
   ai:
     connect-timeout: PT3S
     read-timeout: PT60S

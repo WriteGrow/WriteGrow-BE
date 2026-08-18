@@ -3,6 +3,8 @@ package com.example.writegrow.infra.ai;
 import com.example.writegrow.global.config.RestClientConfig;
 import com.example.writegrow.infra.ai.dto.AiAnalysisRequest;
 import com.example.writegrow.infra.ai.dto.AiAnalysisResponse;
+import com.example.writegrow.infra.ai.dto.AiErrorAnalysisRequest;
+import com.example.writegrow.infra.ai.dto.AiErrorAnalysisResponse;
 import com.example.writegrow.infra.ai.exception.AiAnalysisErrorCode;
 import com.example.writegrow.infra.ai.exception.AiAnalysisException;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ import org.springframework.web.client.RestClientException;
 public class AiAnalysisHttpClient implements AiAnalysisClient {
 
     private static final String ANALYZE_PATH = "/handwriting/analyze";
+    private static final String TEXT_ANALYZE_PATH = "/text/analyze";
     private static final String PROVIDER = "writegrow-ai";
 
     private final RestClient restClient;
@@ -46,6 +49,27 @@ public class AiAnalysisHttpClient implements AiAnalysisClient {
             return response;
         } catch (RestClientException exception) {
             log.error("AI 분석 서버 호출 실패: writingId={}", request.writingId(), exception);
+            throw new AiAnalysisException(AiAnalysisErrorCode.AI_CALL_FAILED, exception);
+        }
+    }
+
+    @Override
+    public AiErrorAnalysisResponse analyzeText(AiErrorAnalysisRequest request) {
+        try {
+            AiErrorAnalysisResponse response = restClient.post()
+                    .uri(TEXT_ANALYZE_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(AiErrorAnalysisResponse.class);
+
+            if (response == null) {
+                throw new AiAnalysisException(AiAnalysisErrorCode.AI_EMPTY_RESPONSE);
+            }
+            // 오류가 하나도 없는 것은 정상이다. 아동이 맞게 썼다는 뜻이므로 빈 목록을 그대로 돌려준다.
+            return response;
+        } catch (RestClientException exception) {
+            log.error("AI 오류 분석 호출 실패: writingId={}", request.writingId(), exception);
             throw new AiAnalysisException(AiAnalysisErrorCode.AI_CALL_FAILED, exception);
         }
     }

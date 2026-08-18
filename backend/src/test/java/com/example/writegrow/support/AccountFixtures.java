@@ -31,6 +31,16 @@ public final class AccountFixtures {
         return profile(id, ProfileRole.CHILD, false);
     }
 
+    /**
+     * 다른 계정에 속한 프로필. 계정 경계를 넘는 열람을 검증할 때 쓴다.
+     */
+    public static Profile profileInAccount(Long id, ProfileRole role, Long accountId) {
+        Profile profile = Profile.create(
+                account(accountId), role, role == ProfileRole.CHILD ? "민준" : "엄마", 2018);
+        ReflectionTestUtils.setField(profile, "id", id);
+        return profile;
+    }
+
     public static Profile profile(Long id, ProfileRole role, boolean consentConfirmed) {
         Profile profile = Profile.create(account(1L), role, role == ProfileRole.CHILD ? "민준" : "엄마", 2018);
         ReflectionTestUtils.setField(profile, "id", id);
