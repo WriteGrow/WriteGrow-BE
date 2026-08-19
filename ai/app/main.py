@@ -1,11 +1,18 @@
 """
-docs/ai-contract.md 가 정의하는 AI 서버. 진입점은 POST /handwriting/analyze 하나.
+docs/ai-contract.md 가 정의하는 AI 서버. 엔드포인트 두 개:
 
-파이프라인 순서 (각 단계 파일):
+  POST /handwriting/analyze  손글씨 이미지+획 데이터 → 텍스트 변환 + 과정 지표
+  POST /text/analyze         확정된 텍스트 → 맞춤법 등 오류 후보 (REQ-03)
+
+입력이 완전히 달라(이미지+획 vs 텍스트만) 계약서가 엔드포인트를 나눴다.
+
+/handwriting/analyze 파이프라인 순서 (각 단계 파일):
   1. fetch.py           imageUrl/strokeUrl 다운로드
   2. stroke_metrics.py  획 시계열 → 과정 지표(순수 알고리즘, AI 아님)
   3. hesitation.py       (다음 라운드) stroke 클러스터 ↔ 글자 정렬 → hesitationPoints
   4. ocr.py              비전 LLM(GPT-4o) 호출 → fullText/segments
+
+/text/analyze 는 text_analysis.py 하나로 처리한다 (이미지/획 데이터가 없어 단순함).
 """
 
 from __future__ import annotations
@@ -18,8 +25,9 @@ from fastapi import FastAPI, HTTPException
 from app.config import settings
 from app.fetch import FetchError, fetch_image_bytes, fetch_stroke_document
 from app.ocr import OcrError, recognize
-from app.schemas import AnalyzeRequest, AnalyzeResponse
+from app.schemas import AnalyzeRequest, AnalyzeResponse, TextAnalyzeRequest, TextAnalyzeResponse
 from app.stroke_metrics import compute_process_metric
+from app.text_analysis import TextAnalysisError, analyze_text
 
 logger = logging.getLogger("writegrow.ai")
 
@@ -66,3 +74,16 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         segments=ocr_result.segments,
         process_metric=metric,
     )
+
+
+@app.post("/text/analyze", response_model=TextAnalyzeResponse)
+async def analyze_text_endpoint(request: TextAnalyzeRequest) -> TextAnalyzeResponse:
+    try:
+        errors = await analyze_text(request.text, request.topic)
+    except TextAnalysisError as e:
+        # 빈 errors 배열은 "오류 없음"이라는 정상 응답이라, OCR 처럼 실패를 빈 값으로
+        # 흉내내면 안 된다. 실패는 502 로 알려서 백엔드가 교정 안내를 만들지 않게 한다.
+        logger.warning("오류 분석 실패: writingId=%s %s", request.writing_id, e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return TextAnalyzeResponse(errors=errors)
