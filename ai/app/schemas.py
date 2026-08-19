@@ -88,6 +88,28 @@ class ProcessMetric(BaseModel):
     )
 
 
+class TextAnalyzeRequest(BaseModel):
+    writing_id: int = Field(alias="writingId")
+    text: str
+    topic: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ErrorItem(BaseModel):
+    type: str
+    start_index: int = Field(serialization_alias="startIndex")
+    end_index: int = Field(serialization_alias="endIndex")
+    original: str
+    suggestion: str
+    confidence: float
+    reason: Optional[str] = None
+
+
+class TextAnalyzeResponse(BaseModel):
+    errors: list[ErrorItem] = Field(default_factory=list)
+
+
 class AnalyzeResponse(BaseModel):
     full_text: str = Field(serialization_alias="fullText")
     overall_confidence: Optional[float] = Field(

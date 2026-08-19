@@ -38,6 +38,20 @@ hesitation 은 stroke 사이 간격으로 "한 글자를 쓰는 동안 그은 �
 순서를 fullText 의 글자 순서와 비례 정렬한다. jamo 는 정밀한 좌표 분석 대신 해당
 글자의 초성으로 근사한다 — 자세한 한계는 `hesitation.py` 상단 docstring 참고.
 
+```
+POST /text/analyze (REQ-03)
+        │
+        ▼
+ text_analysis.py   GPT 구조화 출력(JSON Schema strict)으로 오류 후보 생성
+                     → startIndex/endIndex 는 모델이 세지 않고, 모델이 복사한
+                       원문 조각(original)을 서버가 text 에서 직접 찾아 계산
+```
+
+여긴 OCR 과 confidence 의 성격이 다르다 — "이 표현이 오류인가"는 판단 문제라 logprobs
+가 없다. 그래서 모델 자기평가 confidence 를 쓰되, 계약서의 "애매하면 낮게" 원칙을
+프롬프트에 그대로 명시한다. 실패 시 빈 배열을 흉내내지 않고 502 를 돌려준다 — 빈
+배열은 "오류 없음"이라는 정상 응답이라 실패와 구분해야 하기 때문이다.
+
 ## 로컬 실행
 
 ```bash
@@ -57,6 +71,13 @@ cp .env.example .env
 
 `http://localhost:8000/docs` 에서 FastAPI 가 자동 생성한 Swagger UI 로 바로 확인 가능하다.
 
+전체 엔드포인트 대신 모델 호출 부분만 빠르게 확인하고 싶으면:
+
+```bash
+./.venv/Scripts/python scripts/try_ocr.py <이미지 경로>
+./.venv/Scripts/python scripts/try_text_analyze.py "아이가 쓴 문장"
+```
+
 backend 쪽에서 이 서버에 실제로 붙여보려면 `application-dev.yml` 의
 `writegrow.ai.stub` 을 `false` 로 바꾼다 (base-url 은 이미 `http://localhost:8000` 로 일치).
 
@@ -72,6 +93,7 @@ backend 쪽에서 이 서버에 실제로 붙여보려면 `application-dev.yml` 
 | `WRITEGROW_AI_FETCH_CONNECT_TIMEOUT_S` | 5.0 | imageUrl/strokeUrl 다운로드 connect 타임아웃 |
 | `WRITEGROW_AI_FETCH_READ_TIMEOUT_S` | 20.0 | 다운로드 read 타임아웃 |
 | `WRITEGROW_AI_OCR_MODEL` | gpt-4o | OCR 에 쓸 모델 |
+| `WRITEGROW_AI_ERROR_ANALYSIS_MODEL` | gpt-4o | 오류 분석(`/text/analyze`)에 쓸 모델 |
 
 접두사 없는 변수 (OpenAI SDK가 직접 읽음, `.env` 참고):
 

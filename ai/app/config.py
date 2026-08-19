@@ -31,5 +31,10 @@ class Settings(BaseSettings):
     # OPENAI_API_KEY 를 OpenAI SDK가 알아서 읽는다(위 load_dotenv 가 .env 를 얹어준 덕분).
     ocr_model: str = "gpt-4o"
 
+    # text_analysis.py(오류 분석)에 쓸 모델. 이미지가 없어 비전 모델일 필요는 없지만,
+    # "이게 아이다운 표현인가 오류인가"를 판단하는 미묘한 작업이라 일단 OCR과 같은
+    # 모델로 시작한다.
+    error_analysis_model: str = "gpt-4o"
+
 
 settings = Settings()
