@@ -14,7 +14,7 @@ POST /handwriting/analyze
  [2] stroke_metrics.py   획(stroke) 시계열 → 과정 지표 계산 (순수 알고리즘, 모델 없음)
         │                totalDurationMs / pauseCount / longestPauseMs / avgStrokeDurationMs
         ▼
- [3] hesitation.py       (예정) stroke 클러스터를 OCR 텍스트의 글자와 정렬 → hesitationPoints
+ [3] hesitation.py       stroke 클러스터를 OCR 텍스트의 글자와 정렬 → hesitationPoints
         │
         ▼
  [4] ocr.py              비전 LLM(GPT-4o) 호출 → fullText / segments(+confidence)
@@ -23,16 +23,20 @@ POST /handwriting/analyze
    schemas.AnalyzeResponse 로 조립해서 반환
 ```
 
-`[3]`(hesitation.py)은 아직 자리가 안 잡혀 있다. `[4]`(OCR)는 구현되어 있지만
-`OPENAI_API_KEY` 가 없거나 호출이 실패하면 `fullText` 를 빈 문자열로 돌려주는데,
-계약서 규칙상 백엔드가 이걸 `ANALYSIS_FAILED` 로 처리하고 아이는
+`[4]`(OCR)는 `OPENAI_API_KEY` 가 없거나 호출이 실패하면 `fullText` 를 빈 문자열로
+돌려주는데, 계약서 규칙상 백엔드가 이걸 `ANALYSIS_FAILED` 로 처리하고 아이는
 `/api/writings/{id}/analysis/retry` 로 재시도할 수 있으므로 "실패해도 안전하게 실패"한다.
-`processMetric` 은 OCR 성공/실패와 무관하게 항상 채워진다.
+`processMetric` 의 집계값(pauseCount 등)은 OCR 성공/실패와 무관하게 항상 채워지고,
+`hesitationPoints` 는 OCR 이 성공해 글자 순서를 알아야만 채워진다.
 
 OCR 은 GPT-4o 의 `logprobs` (모델이 실제로 계산한 토큰별 확률)를 그대로 이용해
 `segments[].confidence` 를 계산한다 — 모델에게 확신도를 다시 물어보는 자기평가 방식이
 아니다. 한글은 토큰 경계와 글자 경계가 안 맞을 수 있어서, `ocr.py::_tokens_to_chars` 가
 바이트를 다시 이어붙여 글자 단위로 복원하는 과정을 거친다.
+
+hesitation 은 stroke 사이 간격으로 "한 글자를 쓰는 동안 그은 뭉치"를 나누고, 그 뭉치
+순서를 fullText 의 글자 순서와 비례 정렬한다. jamo 는 정밀한 좌표 분석 대신 해당
+글자의 초성으로 근사한다 — 자세한 한계는 `hesitation.py` 상단 docstring 참고.
 
 ## 로컬 실행
 
@@ -63,6 +67,8 @@ backend 쪽에서 이 서버에 실제로 붙여보려면 `application-dev.yml` 
 | 변수 | 기본값 | 설명 |
 | :--- | :--- | :--- |
 | `WRITEGROW_AI_PAUSE_THRESHOLD_MS` | 600 | 이보다 짧은 pen-up 간격은 멈춤으로 세지 않는다 |
+| `WRITEGROW_AI_INTRA_CHAR_GAP_MS` | 400 | 이보다 짧은 간격은 "같은 글자를 계속 쓰는 중"으로 본다 |
+| `WRITEGROW_AI_HESITATION_PAUSE_MS` | 1500 | 이보다 길게 멈춰야 hesitationPoints 에 보고한다 |
 | `WRITEGROW_AI_FETCH_CONNECT_TIMEOUT_S` | 5.0 | imageUrl/strokeUrl 다운로드 connect 타임아웃 |
 | `WRITEGROW_AI_FETCH_READ_TIMEOUT_S` | 20.0 | 다운로드 read 타임아웃 |
 | `WRITEGROW_AI_OCR_MODEL` | gpt-4o | OCR 에 쓸 모델 |
