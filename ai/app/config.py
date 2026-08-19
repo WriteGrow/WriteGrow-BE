@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # stroke_metrics.py: 이보다 짧은 pen-up 간격은 "자연스러운 이어쓰기"로 보고 무시한다.
     pause_threshold_ms: int = 600
 
+    # hesitation.py: 이보다 짧은 간격은 "같은 글자를 계속 쓰는 중"으로 본다(클러스터 경계 기준).
+    intra_char_gap_ms: int = 400
+    # hesitation.py: 클러스터 앞 멈춤이 이보다 길어야 hesitationPoints 에 보고한다.
+    # pause_threshold_ms 보다 기준을 높게 잡아, "집계에는 잡히지만 보고할 정도는 아닌" 멈춤을 거른다.
+    hesitation_pause_ms: int = 1500
+
     # imageUrl / strokeUrl 다운로드용 타임아웃. presigned URL 은 이미 S3 를 가리키므로
     # 백엔드→AI 타임아웃(3s/60s, docs/ai-contract.md)과는 별개로 우리가 정한다.
     fetch_connect_timeout_s: float = 5.0

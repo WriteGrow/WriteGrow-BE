@@ -9,7 +9,7 @@ docs/ai-contract.md 가 정의하는 AI 서버. 엔드포인트 두 개:
 /handwriting/analyze 파이프라인 순서 (각 단계 파일):
   1. fetch.py           imageUrl/strokeUrl 다운로드
   2. stroke_metrics.py  획 시계열 → 과정 지표(순수 알고리즘, AI 아님)
-  3. hesitation.py       (다음 라운드) stroke 클러스터 ↔ 글자 정렬 → hesitationPoints
+  3. hesitation.py       stroke 클러스터 ↔ 글자 정렬 → hesitationPoints (OCR 결과가 있어야 가능)
   4. ocr.py              비전 LLM(GPT-4o) 호출 → fullText/segments
 
 /text/analyze 는 text_analysis.py 하나로 처리한다 (이미지/획 데이터가 없어 단순함).
@@ -24,6 +24,7 @@ from fastapi import FastAPI, HTTPException
 
 from app.config import settings
 from app.fetch import FetchError, fetch_image_bytes, fetch_stroke_document
+from app.hesitation import compute_hesitation_points
 from app.ocr import OcrError, recognize
 from app.schemas import AnalyzeRequest, AnalyzeResponse, TextAnalyzeRequest, TextAnalyzeResponse
 from app.stroke_metrics import compute_process_metric
@@ -50,10 +51,7 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         logger.warning("다운로드 실패: writingId=%s %s", request.writing_id, e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
-    metric, _pauses = compute_process_metric(
-        stroke_doc, pause_threshold_ms=settings.pause_threshold_ms
-    )
-    # TODO(다음 라운드): _pauses 를 hesitation.py 에 넘겨 metric.hesitation_points 를 채운다.
+    metric, _ = compute_process_metric(stroke_doc, pause_threshold_ms=settings.pause_threshold_ms)
 
     try:
         ocr_result = await recognize(image_bytes, request.expected_topic)
@@ -67,6 +65,13 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             segments=[],
             process_metric=metric,
         )
+
+    # hesitationPoints 는 OCR 이 성공해야(글자 순서를 알아야) 계산할 수 있다.
+    # 클러스터링/정렬은 근사치라 실패해도 나머지 응답(특히 fullText)까지 잃으면 안 된다.
+    try:
+        metric.hesitation_points = compute_hesitation_points(stroke_doc.strokes, ocr_result.full_text)
+    except Exception:
+        logger.exception("hesitation 계산 실패: writingId=%s", request.writing_id)
 
     return AnalyzeResponse(
         full_text=ocr_result.full_text,
