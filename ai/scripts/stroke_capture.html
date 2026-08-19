@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stroke 캡처 도구 (테스트용)</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  canvas { border: 2px solid #333; touch-action: none; background: #fff; display: block; margin: 12px 0; }
+  button { font-size: 16px; padding: 8px 16px; margin-right: 8px; cursor: pointer; }
+  #stats { font-family: monospace; white-space: pre; background: #f4f4f4; padding: 8px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h2>손글씨 stroke 캡처 (hesitation.py 테스트용)</h2>
+  <p>아래 칸에 펜/손가락/마우스로 짧은 한글 문장을 써주세요. 다 쓰면 "완료 (다운로드)"를 누르면
+     <code>strokes.json</code>과 <code>image.png</code> 두 개가 다운로드됩니다.
+     둘 다 <code>ai/scripts/try_handwriting_local.py</code> 에 그대로 넣으면 됩니다.</p>
+
+  <canvas id="canvas" width="800" height="300"></canvas>
+
+  <button id="clear">지우기</button>
+  <button id="done">완료 (다운로드)</button>
+
+  <div id="stats">strokeCount=0, totalDurationMs=0</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+ctx.lineWidth = 3;
+ctx.lineCap = 'round';
+ctx.strokeStyle = '#111';
+
+let sessionStart = null;
+let strokes = [];
+let currentStroke = null;
+let drawing = false;
+
+function now() {
+  return sessionStart === null ? 0 : Math.round(performance.now() - sessionStart);
+}
+
+function updateStats() {
+  const total = strokes.length
+    ? Math.max(0, strokes[strokes.length - 1].penUpAt - strokes[0].penDownAt)
+    : 0;
+  document.getElementById('stats').textContent =
+    `strokeCount=${strokes.length}, totalDurationMs=${total}`;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  if (sessionStart === null) sessionStart = performance.now();
+
+  drawing = true;
+  currentStroke = {
+    index: strokes.length,
+    penDownAt: now(),
+    penUpAt: now(),
+    points: [{ x: e.offsetX, y: e.offsetY, t: now(), pressure: e.pressure || null }],
+  };
+  ctx.beginPath();
+  ctx.moveTo(e.offsetX, e.offsetY);
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  currentStroke.points.push({ x: e.offsetX, y: e.offsetY, t: now(), pressure: e.pressure || null });
+  ctx.lineTo(e.offsetX, e.offsetY);
+  ctx.stroke();
+});
+
+function endStroke(e) {
+  if (!drawing) return;
+  drawing = false;
+  currentStroke.penUpAt = now();
+  strokes.push(currentStroke);
+  currentStroke = null;
+  updateStats();
+}
+
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointercancel', endStroke);
+
+document.getElementById('clear').addEventListener('click', () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  strokes = [];
+  sessionStart = null;
+  updateStats();
+});
+
+function downloadBlob(filename, blob) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+document.getElementById('done').addEventListener('click', () => {
+  if (strokes.length === 0) {
+    alert('아직 아무것도 안 썼어요.');
+    return;
+  }
+
+  const doc = {
+    writingId: 0,
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    strokeCount: strokes.length,
+    totalDurationMs: Math.max(0, strokes[strokes.length - 1].penUpAt - strokes[0].penDownAt),
+    strokes: strokes,
+  };
+
+  downloadBlob('strokes.json', new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
+
+  canvas.toBlob((blob) => downloadBlob('image.png', blob), 'image/png');
+});
+</script>
+</body>
+</html>
