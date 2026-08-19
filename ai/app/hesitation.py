@@ -51,19 +51,27 @@ def _non_space_positions(full_text: str) -> list[int]:
     return [i for i, ch in enumerate(full_text) if not ch.isspace()]
 
 
-def _align_cluster_to_char_index(
-    cluster_index: int, cluster_count: int, non_space_positions: list[int]
-) -> int:
-    """클러스터 순서를 공백 아닌 글자 순서에 비례해서 대응시킨다.
+def _bin_clusters_by_char(
+    clusters: list[_CharCluster], non_space_positions: list[int]
+) -> list[list[_CharCluster]]:
+    """N개 클러스터를 M개 글자에 순서를 지키며 겹치지 않게 나눠 담는다.
 
-    클러스터 개수와 글자 수가 같으면 그냥 1:1 대응이 되고, 다르면 비율로 가장
-    가까운 글자를 고른다 — 정확하진 않지만 "대략 몇 번째 글자 근처"는 맞힌다.
+    클러스터 개수와 글자 수가 다른 게 보통이다(특히 마우스/서투른 손글씨는 클러스터가
+    잘게 쪼개지기 쉽다). 클러스터마다 "가장 가까운 글자"를 각자 반올림해서 고르면
+    서로 다른 클러스터가 같은 글자로 몰려 중복 보고되거나, 반대로 아무 클러스터도
+    안 걸린 글자가 조용히 누락되는 문제가 생긴다(실제 마우스 입력 테스트로 발견).
+
+    그 대신 클러스터를 순서대로 M개 구간으로 나눠 담아서, 한 글자에 여러 클러스터가
+    몰리는 건 허용하되 그 글자에 대한 판정은 한 번만 내리게 한다. N==M 이면 그냥
+    1:1 대응이 된다.
     """
-    if cluster_count <= 1:
-        return non_space_positions[0]
-    ratio = cluster_index / (cluster_count - 1)
-    target = round(ratio * (len(non_space_positions) - 1))
-    return non_space_positions[target]
+    m = len(non_space_positions)
+    n = len(clusters)
+    bins: list[list[_CharCluster]] = [[] for _ in range(m)]
+    for i, cluster in enumerate(clusters):
+        bin_index = min(m - 1, i * m // n)
+        bins[bin_index].append(cluster)
+    return bins
 
 
 def _guess_choseong(char: str) -> str | None:
@@ -87,26 +95,40 @@ def compute_hesitation_points(
     if not clusters or not non_space_positions:
         return []
 
-    # "이 글에서 글자 하나 쓰는 데 보통 stroke 몇 개 썼나" — 이보다 훨씬 많이 그은
-    # 클러스터는 다시 그리기(재시도)를 의심한다.
-    typical_strokes_per_char = statistics.median(len(c.strokes) for c in clusters)
+    bins = _bin_clusters_by_char(clusters, non_space_positions)
+
+    # "이 글자 하나 쓰는 데 보통 stroke 몇 개 썼나" — 글자당(=bin당) 총 stroke 수의
+    # 중앙값과 비교한다. 클러스터 단위가 아니라 글자 단위로 봐야, 한 글자가 클러스터
+    # 여러 개로 쪼개진 경우에도 "이 글자를 쓰는 데 유난히 많이 그었다"를 올바르게 잰다.
+    strokes_per_char = [sum(len(c.strokes) for c in b) for b in bins if b]
+    if not strokes_per_char:
+        return []
+    typical_strokes_per_char = statistics.median(strokes_per_char)
 
     points: list[HesitationPoint] = []
-    for i, cluster in enumerate(clusters):
-        retry_count = max(0, len(cluster.strokes) - round(typical_strokes_per_char))
-        is_long_pause = cluster.preceding_pause_ms >= hesitation_pause_ms
+    for char_index, char_clusters in zip(non_space_positions, bins):
+        if not char_clusters:
+            continue  # 이 글자에 배정된 클러스터가 없다 — 판단할 근거가 없으니 건너뛴다
+
+        total_strokes = sum(len(c.strokes) for c in char_clusters)
+        retry_count = max(0, total_strokes - round(typical_strokes_per_char))
+
+        # 이 글자를 쓰기 시작하기 전 멈춤 + 이 글자를 쓰는 도중(클러스터 사이) 멈춤들.
+        preceding_pause_ms = char_clusters[0].preceding_pause_ms
+        internal_pause_ms = sum(c.preceding_pause_ms for c in char_clusters[1:])
+        is_long_pause = max(preceding_pause_ms, internal_pause_ms) >= hesitation_pause_ms
+
         if not is_long_pause and retry_count == 0:
             continue  # 평범하게 쓴 글자는 보고하지 않는다
 
-        char_index = _align_cluster_to_char_index(i, len(clusters), non_space_positions)
         char = full_text[char_index]
-        dwell_ms = cluster.strokes[-1].pen_up_at - cluster.strokes[0].pen_down_at
+        dwell_ms = char_clusters[-1].strokes[-1].pen_up_at - char_clusters[0].strokes[0].pen_down_at
         points.append(
             HesitationPoint(
                 char_index=char_index,
                 char=char,
                 jamo=_guess_choseong(char),
-                duration_ms=cluster.preceding_pause_ms + max(dwell_ms, 0),
+                duration_ms=preceding_pause_ms + max(dwell_ms, 0),
                 retry_count=retry_count,
             )
         )
