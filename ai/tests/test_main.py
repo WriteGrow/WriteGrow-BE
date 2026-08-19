@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 from app.fetch import FetchError
 from app.main import app
 from app.ocr import OcrError, OcrResult
-from app.schemas import Segment, Stroke, StrokeDocument
+from app.schemas import ErrorItem, Segment, Stroke, StrokeDocument
+from app.text_analysis import TextAnalysisError
 
 client = TestClient(app)
 
@@ -99,6 +100,45 @@ def test_analyze_returns_502_when_download_fails(mock_fetch_stroke, mock_fetch_i
             "imageUrl": "https://example.com/image.png",
             "strokeUrl": "https://example.com/strokes.json",
         },
+    )
+
+    assert resp.status_code == 502
+
+
+@patch("app.main.analyze_text", new_callable=AsyncMock)
+def test_text_analyze_returns_errors_with_wire_field_names(mock_analyze_text):
+    mock_analyze_text.return_value = [
+        ErrorItem(
+            type="FINAL_CONSONANT",
+            start_index=3,
+            end_index=6,
+            original="놀앗다",
+            suggestion="놀았다",
+            confidence=0.93,
+            reason="'았'의 받침 표기",
+        )
+    ]
+
+    resp = client.post(
+        "/text/analyze",
+        json={"writingId": 123, "text": "친구랑 놀앗다"},
+    )
+
+    assert resp.status_code == 200
+    errors = resp.json()["errors"]
+    assert errors[0]["type"] == "FINAL_CONSONANT"
+    assert errors[0]["startIndex"] == 3
+    assert errors[0]["endIndex"] == 6
+
+
+@patch("app.main.analyze_text", new_callable=AsyncMock)
+def test_text_analyze_returns_502_on_failure_not_empty_list(mock_analyze_text):
+    """빈 배열은 '오류 없음'이라는 정상 응답이라, 실패는 빈 배열이 아니라 502 여야 한다."""
+    mock_analyze_text.side_effect = TextAnalysisError("boom")
+
+    resp = client.post(
+        "/text/analyze",
+        json={"writingId": 123, "text": "친구랑 놀앗다"},
     )
 
     assert resp.status_code == 502
