@@ -61,6 +61,7 @@ sudo nginx -t && sudo systemctl start nginx
 | `S3_BUCKET` | 손글씨 저장 버킷 이름 |
 | `S3_ACCESS_KEY` | IAM 사용자 액세스 키 |
 | `S3_SECRET_KEY` | IAM 사용자 비밀 키 |
+| `OPENAI_API_KEY` | AI 서버가 OCR·오류 분석에 쓴다. 없으면 AI 는 뜨지만 분석만 실패한다 |
 
 저장소는 AWS S3 지만 서버가 AWS 가 아니라 IAM 역할을 쓸 수 없으므로 키를 직접 주입한다.
 그래서 SDK 기본 이름(`AWS_ACCESS_KEY_ID`) 대신 용도가 드러나는 `S3_` 접두사를 쓴다.
@@ -72,7 +73,7 @@ sudo nginx -t && sudo systemctl start nginx
 
 | 이름 | 기본값 | 언제 바꾸나 |
 | :--- | :--- | :--- |
-| `AI_STUB` | `true` | AI 서버가 배포되면 `false`. 그 전에 false 로 두면 손글씨 글이 전부 `ANALYSIS_FAILED` 가 된다 |
+| `AI_STUB` | `true` | AI 를 실제로 쓰려면 `false`. 아래 "AI 서버" 참고 |
 | `SWAGGER_ENABLED` | `true` | 프론트 연동이 끝나면 `false` |
 
 변수를 만들지 않으면 위 기본값으로 동작한다. 값을 바꾸면 다음 배포부터 적용된다.
@@ -80,6 +81,43 @@ sudo nginx -t && sudo systemctl start nginx
 
 `S3_BUCKET` 은 dev 와 같은 버킷을 쓴다. `prod/` 접두사로 영역만 나누므로 로컬 개발과
 섞이지 않는다. 다른 이름을 넣으면 기동 시 버킷 확인에서 바로 실패한다.
+
+## AI 서버
+
+백엔드와 같은 서버에 컨테이너로 함께 뜬다. **호스트에 포트를 열지 않고** compose 네트워크
+안에서만 접근한다(`AI_BASE_URL=http://ai:8000`).
+
+손글씨 이미지와 획은 요청 본문이 아니라 **presigned S3 URL** 로 전달된다. AI 컨테이너가
+그 URL 로 직접 내려받으므로 **아웃바운드 인터넷이 열려 있어야 한다**(S3, OpenAI). 네트워크를
+`internal: true` 로 격리하면 분석이 전부 실패한다. URL 만료는 10분이다.
+
+### 실제 AI 로 전환
+
+`AI_STUB` 변수를 `false` 로 바꾼 뒤 배포하면 된다. **이 값을 바꾸지 않으면 AI 컨테이너가
+떠 있어도 백엔드는 계속 고정 응답만 본다.**
+
+전환 전에 OpenAI 대시보드에서 **사용량 한도**를 걸어 두는 편이 안전하다. 인증이 없는 공개
+API 라 호출량이 곧 비용이고, 손글씨 분석은 비전 모델이라 단가가 높다. 시연 때만 `false` 로
+두고 평소에는 `true` 로 돌려놓는 운용도 가능하다 — 변수 하나라 즉시 전환된다.
+
+### 두 엔드포인트의 실패 방식이 다르다
+
+| 엔드포인트 | 실패 시 | 백엔드 처리 |
+| :--- | :--- | :--- |
+| `/handwriting/analyze` | 200 + 빈 `fullText` | `ANALYSIS_FAILED`, 재시도 가능 |
+| `/text/analyze` | 502 | `ANALYSIS_FAILED`, 교정 안내를 만들지 않음 |
+
+빈 `errors` 배열은 "오류 없음"이라는 정상 응답이라 실패와 구분한다.
+
+### 배포 후 확인
+
+AI 는 호스트 포트가 없으므로 컨테이너 안에서 확인한다.
+
+```bash
+cd /opt/writegrow
+docker compose -f docker-compose.prod.yml exec ai curl -fsS http://localhost:8000/health
+docker compose -f docker-compose.prod.yml logs --tail=50 ai
+```
 
 ## 5. 배포
 
