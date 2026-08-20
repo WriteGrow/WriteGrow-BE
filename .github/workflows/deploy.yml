@@ -8,6 +8,7 @@ on:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'ai/**'
       - 'docker-compose.prod.yml'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
@@ -18,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
+  test-backend:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -38,21 +39,43 @@ jobs:
       - name: Build and test
         run: ./gradlew build --no-daemon
 
+  test-ai:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dockerfile 의 python:3.10-slim 과 맞춘다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: ai/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # OCR 테스트는 OpenAI 를 실제로 호출하지 않고 로직만 검증하므로 키가 필요 없다.
+      - name: Test
+        run: python -m pytest -q
+
   build:
-    needs: test
+    needs: [ test-backend, test-ai ]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.image.outputs.name }}
+      registry: ${{ steps.image.outputs.registry }}
     steps:
       - uses: actions/checkout@v4
 
       # GHCR 은 대문자를 받지 않는다. 조직명이 WriteGrow 라 반드시 낮춰야 한다.
-      - name: 이미지 이름 결정
+      - name: 이미지 접두사 결정
         id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/writegrow-backend" >> "$GITHUB_OUTPUT"
+        run: echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       # 기본 빌더는 docker 드라이버라 cache-to: type=gha 를 지원하지 않는다.
       # 이 스텝이 docker-container 드라이버 빌더를 만들어 준다.
@@ -64,15 +87,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      # 두 이미지를 같은 커밋 SHA 로 태깅한다. 서버는 IMAGE_TAG 하나로 둘 다 내려받는다.
+      - name: 백엔드 이미지
+        uses: docker/build-push-action@v6
         with:
           context: ./backend
           push: true
           tags: |
-            ${{ steps.image.outputs.name }}:${{ github.sha }}
-            ${{ steps.image.outputs.name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ steps.image.outputs.registry }}/writegrow-backend:${{ github.sha }}
+            ${{ steps.image.outputs.registry }}/writegrow-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: AI 이미지
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ai
+          push: true
+          tags: |
+            ${{ steps.image.outputs.registry }}/writegrow-ai:${{ github.sha }}
+            ${{ steps.image.outputs.registry }}/writegrow-ai:latest
+          cache-from: type=gha,scope=ai
+          cache-to: type=gha,mode=max,scope=ai
 
   deploy:
     needs: build
@@ -108,12 +144,14 @@ jobs:
           S3_BUCKET: ${{ secrets.S3_BUCKET }}
           S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
           S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+          # AI 이미지에는 들어 있지 않다. 없으면 AI 서버는 뜨지만 OCR 과 오류 분석만 실패한다.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,S3_BUCKET,S3_ACCESS_KEY,S3_SECRET_KEY,AI_STUB,SWAGGER_ENABLED
+          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,S3_BUCKET,S3_ACCESS_KEY,S3_SECRET_KEY,AI_STUB,SWAGGER_ENABLED,OPENAI_API_KEY
           script: |
             set -euo pipefail
             cd /opt/writegrow
@@ -130,26 +168,41 @@ jobs:
             S3_SECRET_KEY=${S3_SECRET_KEY}
             AI_STUB=${AI_STUB}
             AI_BASE_URL=http://ai:8000
+            OPENAI_API_KEY=${OPENAI_API_KEY}
             SWAGGER_ENABLED=${SWAGGER_ENABLED}
             IMAGE_TAG=${IMAGE_TAG}
             EOF
 
             # GITHUB_TOKEN 은 이 실행 동안만 유효하다. 서버에 장기 토큰을 남기지 않는다.
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
-            docker compose -f docker-compose.prod.yml --env-file .env pull app
+            # 백엔드와 AI 이미지를 모두 내려받는다.
+            docker compose -f docker-compose.prod.yml --env-file .env pull app ai
             docker compose -f docker-compose.prod.yml --env-file .env up -d
             docker logout ghcr.io
 
             # 기동 확인. S3 설정이 틀리면 S3BucketVerifier 가 기동을 막으므로 여기서 잡힌다.
             for i in $(seq 1 36); do
               if curl -fsS http://127.0.0.1:8080/actuator/health 2>/dev/null | grep -q UP; then
-                echo "기동 확인 완료"
-                docker image prune -f
-                exit 0
+                echo "백엔드 기동 확인 완료"
+                break
+              fi
+              if [ "$i" -eq 36 ]; then
+                echo "백엔드 기동 확인 실패 — 최근 로그"
+                docker compose -f docker-compose.prod.yml logs --tail=120 app
+                exit 1
               fi
               sleep 5
             done
 
-            echo "기동 확인 실패 — 최근 로그"
-            docker compose -f docker-compose.prod.yml logs --tail=120 app
-            exit 1
+            # AI 는 호스트에 포트를 열지 않으므로 컨테이너 안에서 확인한다.
+            # 여기서 실패해도 배포는 살린다 — 백엔드는 AI 없이도 동작하고,
+            # 분석만 ANALYSIS_FAILED 로 기록된 뒤 재시도할 수 있다.
+            if docker compose -f docker-compose.prod.yml exec -T ai \
+                 curl -fsS http://localhost:8000/health > /dev/null 2>&1; then
+              echo "AI 기동 확인 완료"
+            else
+              echo "::warning::AI 서버 헬스체크 실패 — 분석이 실패로 기록된다"
+              docker compose -f docker-compose.prod.yml logs --tail=60 ai || true
+            fi
+
+            docker image prune -f

@@ -1,15 +1,19 @@
-name: Backend CI
+name: CI
 
 # main 에 반영된 뒤의 테스트는 deploy 워크플로가 배포 전에 다시 돌린다.
 # 여기서 push 까지 받으면 같은 테스트가 두 번 돈다.
+#
+# 각 잡은 해당 디렉터리가 바뀐 PR 에서만 의미가 있지만, 잡 단위 paths 필터가 없으므로
+# 두 경로 중 하나라도 바뀌면 둘 다 돈다. 실행 시간이 짧아 그대로 둔다.
 on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'ai/**'
       - '.github/workflows/backend-ci.yml'
 
 jobs:
-  build:
+  backend:
     runs-on: ubuntu-latest
 
     defaults:
@@ -37,3 +41,27 @@ jobs:
         with:
           name: test-report
           path: backend/build/reports/tests/test
+
+  ai:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ai
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dockerfile 의 python:3.10-slim 과 맞춘다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: ai/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # OCR 테스트는 OpenAI 를 실제로 호출하지 않고 로직만 검증하므로 키가 필요 없다.
+      - name: Test
+        run: python -m pytest -q
